@@ -5,15 +5,30 @@ const CartContext = createContext();
 
 export function CartProvider({ children }) {
   const [items, setItems] = useState([]);
+  const [hasMounted, setHasMounted] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem('cart');
-    if (saved) setItems(JSON.parse(saved));
+    try {
+      const saved = localStorage.getItem('cart');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) setItems(parsed);
+      }
+    } catch (e) {
+      console.error('Error loading cart:', e);
+    } finally {
+      setHasMounted(true);
+    }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('cart', JSON.stringify(items));
-  }, [items]);
+    if (!hasMounted) return;
+    try {
+      localStorage.setItem('cart', JSON.stringify(items));
+    } catch (e) {
+      console.error('Error saving cart:', e);
+    }
+  }, [items, hasMounted]);
 
   const addItem = (item) => {
     setItems(prev => {
