@@ -66,7 +66,16 @@ export default function DeliveryDashboardPage() {
 
   useEffect(() => {
     if (isDelivery || isAdmin) {
-      fetchOrders();
+      getDeliveryOrders({ all: 'true' })
+        .then((res) => {
+          const list = res.data?.data || res.data || [];
+          setOrders(Array.isArray(list) ? list : []);
+        })
+        .catch((err) => {
+          console.error('Failed to load delivery orders:', err);
+          setOrders([]);
+        })
+        .finally(() => setLoading(false));
     }
   }, [isDelivery, isAdmin]);
 

@@ -45,7 +45,16 @@ export default function AdminItemsPage() {
 
   useEffect(() => {
     if (isAdmin) {
-      fetchItems();
+      getAdminItems()
+        .then((res) => {
+          const data = res.data?.data || res.data || [];
+          setItems(Array.isArray(data) ? data : []);
+        })
+        .catch((err) => {
+          console.error('Failed to load admin items:', err);
+          setItems([]);
+        })
+        .finally(() => setLoading(false));
     }
   }, [isAdmin]);
 

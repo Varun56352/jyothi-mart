@@ -51,7 +51,6 @@ export default function OrdersPage() {
   useEffect(() => {
     if (!user) return;
 
-    setLoading(true);
     getMyOrders()
       .then((res) => {
         const data = res.data?.data || res.data || [];

@@ -52,7 +52,6 @@ export default function AdminSettingsPage() {
 
   useEffect(() => {
     if (isAdmin) {
-      setLoading(true);
       getAdminSettings()
         .then((res) => {
           const data = res.data?.data || res.data || {};

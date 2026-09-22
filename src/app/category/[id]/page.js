@@ -18,7 +18,6 @@ export default function CategoryPage() {
   useEffect(() => {
     if (!categoryId) return;
 
-    setLoading(true);
     getCatalog({ category: categoryId })
       .then((res) => {
         const fetchedItems = res.data?.data || res.data?.items || (Array.isArray(res.data) ? res.data : []);

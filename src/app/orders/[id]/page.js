@@ -60,7 +60,6 @@ export default function OrderDetailPage() {
   useEffect(() => {
     if (!orderId) return;
 
-    setLoading(true);
     getOrderById(orderId)
       .then((res) => {
         const data = res.data?.data || res.data;

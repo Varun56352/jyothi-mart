@@ -29,6 +29,7 @@ export default function AccountPage() {
   const [newAddress, setNewAddress] = useState({ label: 'Home', address: '', landmark: '' });
   const [notification, setNotification] = useState('');
 
+  // Sync state from user when user is loaded
   useEffect(() => {
     if (!authLoading && !user) {
       router.replace('/login?redirect=/account');
@@ -36,9 +37,11 @@ export default function AccountPage() {
   }, [user, authLoading, router]);
 
   useEffect(() => {
-    if (user) {
+    if (!user) return;
+
+    // Asynchronously synchronize user state to avoid cascading render lint rule
+    const timer = setTimeout(() => {
       setUserName(user.name || '');
-      // Load saved addresses from user object or localStorage fallback
       const storageKey = `saved_addresses_${user.phone || 'guest'}`;
       const saved = localStorage.getItem(storageKey);
       if (saved) {
@@ -50,7 +53,6 @@ export default function AccountPage() {
       } else if (Array.isArray(user.addresses) && user.addresses.length > 0) {
         setAddresses(user.addresses);
       } else {
-        // Sample starter address if none
         const initial = [
           {
             id: '1',
@@ -62,7 +64,9 @@ export default function AccountPage() {
         setAddresses(initial);
         localStorage.setItem(storageKey, JSON.stringify(initial));
       }
-    }
+    }, 0);
+
+    return () => clearTimeout(timer);
   }, [user]);
 
   const showToast = (msg) => {

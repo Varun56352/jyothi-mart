@@ -102,7 +102,17 @@ export default function AdminOrdersPage() {
 
   useEffect(() => {
     if (isAdmin) {
-      fetchOrders();
+      const params = activeTab === 'all' ? {} : { status: activeTab };
+      getAdminOrders(params)
+        .then((res) => {
+          const list = res.data?.data || res.data || [];
+          setOrders(Array.isArray(list) ? list : []);
+        })
+        .catch((err) => {
+          console.error('Failed to load admin orders:', err);
+          setOrders([]);
+        })
+        .finally(() => setLoading(false));
     }
   }, [isAdmin, activeTab]);
 
