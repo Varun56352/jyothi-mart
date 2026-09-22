@@ -1,31 +1,44 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  Smartphone,
-  Monitor,
-  RefreshCw,
-  LogOut,
-  ShoppingBag,
+  LayoutDashboard,
   Package,
-  Settings as SettingsIcon,
+  ShoppingBag,
+  Users,
   ExternalLink,
+  LogOut,
   ShieldCheck,
+  ChevronRight,
+  Clock,
+  CheckCircle2,
+  Menu,
+  X,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { getAdminOrders, getAdminItems, getAdminUsers } from '@/lib/api';
+import AdminOrdersManager from '@/components/admin/AdminOrdersManager';
 import AdminItemsManager from '@/components/admin/AdminItemsManager';
+import AdminUsersManager from '@/components/admin/AdminUsersManager';
 
 export default function AdminPage() {
   const { user, isAdmin, logout, loading: authLoading } = useAuth();
   const router = useRouter();
 
-  const [previewDevice, setPreviewDevice] = useState('mobile'); // 'mobile' | 'responsive'
-  const [previewKey, setPreviewKey] = useState(0);
-  const [mobileTab, setMobileTab] = useState('items'); // 'items' | 'preview' | 'links'
-  const iframeRef = useRef(null);
+  // Active Sidebar Section: 'dashboard' | 'orders' | 'items' | 'users'
+  const [activeSection, setActiveSection] = useState('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Authentication protection
+  // Quick stats for dashboard cards
+  const [stats, setStats] = useState({
+    liveOrders: 0,
+    completedOrders: 0,
+    totalItems: 0,
+    onlineItems: 0,
+    totalUsers: 0,
+  });
+
   useEffect(() => {
     if (!authLoading) {
       if (!user) {
@@ -36,14 +49,33 @@ export default function AdminPage() {
     }
   }, [user, isAdmin, authLoading, router]);
 
-  const refreshPreview = () => {
-    setPreviewKey((k) => k + 1);
-  };
+  useEffect(() => {
+    if (isAdmin) {
+      Promise.all([
+        getAdminOrders({ limit: 100 }).catch(() => ({ data: [] })),
+        getAdminItems().catch(() => ({ data: [] })),
+        getAdminUsers().catch(() => ({ data: [] })),
+      ]).then(([ordRes, itmRes, usrRes]) => {
+        const orders = ordRes.data?.data || ordRes.data || [];
+        const items = itmRes.data?.data || itmRes.data || [];
+        const users = usrRes.data?.data || usrRes.data || [];
 
-  const handleItemUpdated = () => {
-    // Refresh the customer view when an item visibility or photo changes
-    refreshPreview();
-  };
+        const live = orders.filter((o) =>
+          ['placed', 'confirmed', 'packing', 'out_for_delivery'].includes(o.status)
+        ).length;
+        const completed = orders.filter((o) => o.status === 'delivered').length;
+        const online = items.filter((i) => i.visible !== false).length;
+
+        setStats({
+          liveOrders: live,
+          completedOrders: completed,
+          totalItems: items.length,
+          onlineItems: online,
+          totalUsers: users.length,
+        });
+      });
+    }
+  }, [isAdmin, activeSection]);
 
   if (authLoading || (!isAdmin && !authLoading)) {
     return (
@@ -56,249 +88,273 @@ export default function AdminPage() {
     );
   }
 
+  const navItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'orders', label: 'Manage Orders', icon: Package, badge: stats.liveOrders > 0 ? stats.liveOrders : null },
+    { id: 'items', label: 'Edit Items', icon: ShoppingBag },
+    { id: 'users', label: 'Manage Users', icon: Users },
+  ];
+
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
-      {/* Top Admin Navigation Header */}
-      <header className="bg-white border-b border-gray-200 px-4 py-2.5 shadow-xs sticky top-0 z-30">
-        <div className="max-w-full mx-auto flex items-center justify-between">
+    <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row">
+      {/* Mobile Top Bar */}
+      <div className="md:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-1.5 -ml-1 text-gray-700 hover:bg-gray-100 rounded-lg cursor-pointer"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <span className="font-extrabold text-[#0C831F] text-base">Jyothi Mart Admin</span>
+        </div>
+        <Link
+          href="/"
+          className="text-xs font-semibold text-[#0C831F] flex items-center gap-1 bg-green-50 px-2.5 py-1 rounded-lg border border-green-200"
+        >
+          <span>Live Site</span>
+          <ExternalLink className="w-3 h-3" />
+        </Link>
+      </div>
+
+      {/* Admin Sidebar */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-gray-200 flex flex-col shadow-sm transition-transform duration-200 md:static md:translate-x-0 ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {/* Sidebar Header */}
+        <div className="p-5 border-b border-gray-100 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-green-50 text-[#0C831F] border border-green-200 flex items-center justify-center font-bold">
-              <ShieldCheck className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-xl bg-green-50 text-[#0C831F] border border-green-200 flex items-center justify-center font-black">
+              JM
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-sm font-extrabold text-gray-900 leading-tight">
-                  Jyothi Mart Admin
-                </h1>
-                <span className="bg-green-100 text-[#0C831F] text-[10px] font-bold px-2 py-0.5 rounded-full">
-                  LIVE CONTROL
-                </span>
-              </div>
-              <p className="text-[11px] text-gray-500">
-                Split Screen: Customer Store Preview & Catalog Management
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 sm:gap-3">
-            <Link
-              href="/admin/orders"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 hover:border-gray-300 hover:bg-gray-50 transition"
-            >
-              <Package className="w-3.5 h-3.5 text-gray-500" />
-              <span>Orders</span>
-            </Link>
-
-            <Link
-              href="/admin/settings"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 hover:border-gray-300 hover:bg-gray-50 transition"
-            >
-              <SettingsIcon className="w-3.5 h-3.5 text-gray-500" />
-              <span>Settings</span>
-            </Link>
-
-            <button
-              onClick={refreshPreview}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 text-xs font-semibold transition cursor-pointer"
-              title="Reload customer view"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Refresh Store</span>
-            </button>
-
-            <button
-              onClick={() => {
-                logout();
-                router.replace('/login');
-              }}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 transition cursor-pointer"
-              title="Log out"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Logout</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Mobile Tab Bar */}
-        <div className="flex lg:hidden items-center border-t border-gray-100 mt-2 pt-2 gap-1">
-          <button
-            onClick={() => setMobileTab('items')}
-            className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition ${
-              mobileTab === 'items' ? 'bg-[#0C831F] text-white' : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            Edit Items Catalog
-          </button>
-          <button
-            onClick={() => setMobileTab('preview')}
-            className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition ${
-              mobileTab === 'preview' ? 'bg-[#0C831F] text-white' : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            Customer Store Preview
-          </button>
-          <button
-            onClick={() => setMobileTab('links')}
-            className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition ${
-              mobileTab === 'links' ? 'bg-[#0C831F] text-white' : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            Orders & Settings
-          </button>
-        </div>
-      </header>
-
-      {/* Main Split Screen Area (Desktop) */}
-      <div className="flex-1 hidden lg:flex overflow-hidden h-[calc(100vh-61px)]">
-        {/* Left Side: Customer Store Live Preview */}
-        <div className="w-1/2 xl:w-[52%] border-r border-gray-200 bg-gray-900 flex flex-col">
-          {/* Preview Sub-bar */}
-          <div className="px-4 py-2 bg-gray-800 text-white flex items-center justify-between text-xs border-b border-gray-700">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="font-semibold text-gray-200">Live Customer View</span>
-              <a
-                href="/"
-                target="_blank"
-                rel="noreferrer"
-                className="text-gray-400 hover:text-white flex items-center gap-1 text-[11px] ml-1"
-                title="Open in new tab"
-              >
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <div className="flex items-center bg-gray-700 rounded-lg p-0.5 text-xs">
-                <button
-                  onClick={() => setPreviewDevice('mobile')}
-                  className={`px-2 py-1 rounded-md flex items-center gap-1 transition ${
-                    previewDevice === 'mobile' ? 'bg-[#0C831F] text-white font-bold' : 'text-gray-300 hover:text-white'
-                  }`}
-                  title="Simulate Mobile Device"
-                >
-                  <Smartphone className="w-3.5 h-3.5" />
-                  <span>Mobile</span>
-                </button>
-                <button
-                  onClick={() => setPreviewDevice('responsive')}
-                  className={`px-2 py-1 rounded-md flex items-center gap-1 transition ${
-                    previewDevice === 'responsive' ? 'bg-[#0C831F] text-white font-bold' : 'text-gray-300 hover:text-white'
-                  }`}
-                  title="Full Width Responsive"
-                >
-                  <Monitor className="w-3.5 h-3.5" />
-                  <span>Full View</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Customer Preview Container */}
-          <div className="flex-1 overflow-auto flex items-center justify-center p-3 bg-gray-950/70">
-            <div
-              className={`transition-all duration-300 shadow-2xl overflow-hidden bg-white ${
-                previewDevice === 'mobile'
-                  ? 'w-[390px] h-[780px] max-h-[92%] rounded-[36px] border-[10px] border-gray-800 relative ring-1 ring-white/10'
-                  : 'w-full h-full rounded-xl border border-gray-700'
-              }`}
-            >
-              {previewDevice === 'mobile' && (
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-4 bg-gray-800 rounded-b-xl z-50 flex items-center justify-center">
-                  <div className="w-3 h-3 rounded-full bg-black/60 mr-2" />
-                  <div className="w-10 h-1 bg-black/60 rounded-full" />
-                </div>
-              )}
-              <iframe
-                ref={iframeRef}
-                key={previewKey}
-                src="/"
-                title="Customer Store Live View"
-                className="w-full h-full border-0 bg-white"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Right Side: Sidebar with Edit Items */}
-        <div className="w-1/2 xl:w-[48%] flex flex-col bg-white">
-          <AdminItemsManager onItemUpdated={handleItemUpdated} />
-        </div>
-      </div>
-
-      {/* Mobile Layout (Tabs) */}
-      <div className="flex-1 lg:hidden flex flex-col">
-        {mobileTab === 'items' && (
-          <div className="flex-1 bg-white min-h-[calc(100vh-110px)]">
-            <AdminItemsManager onItemUpdated={handleItemUpdated} />
-          </div>
-        )}
-
-        {mobileTab === 'preview' && (
-          <div className="flex-1 bg-gray-900 p-2 min-h-[calc(100vh-110px)] flex flex-col">
-            <div className="flex items-center justify-between text-white text-xs mb-2 px-1">
-              <span className="font-bold flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                Customer Store Preview
+              <h1 className="text-sm font-extrabold text-gray-900 leading-tight">Jyothi Mart</h1>
+              <span className="text-[10px] font-bold text-[#0C831F] uppercase tracking-wider">
+                Admin Control
               </span>
-              <button
-                onClick={refreshPreview}
-                className="text-[#0C831F] bg-white px-2 py-0.5 rounded-md font-semibold text-[11px]"
-              >
-                Refresh
-              </button>
-            </div>
-            <div className="flex-1 rounded-2xl overflow-hidden border border-gray-700 bg-white shadow-lg min-h-[600px]">
-              <iframe
-                key={previewKey}
-                src="/"
-                title="Customer View"
-                className="w-full h-full min-h-[600px] border-0"
-              />
             </div>
           </div>
-        )}
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="md:hidden p-1 text-gray-400 hover:text-gray-700 rounded-lg"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
-        {mobileTab === 'links' && (
-          <div className="p-4 space-y-4">
-            <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs">
-              <h3 className="font-bold text-gray-900 mb-3 text-sm">Quick Management</h3>
-              <div className="space-y-2">
-                <Link
-                  href="/admin/orders"
-                  className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-50 hover:bg-green-50 text-gray-800 hover:text-[#0C831F] font-semibold text-xs border border-gray-200 transition"
-                >
-                  <span className="flex items-center gap-2">
-                    <Package className="w-4 h-4" /> Manage Customer Orders
-                  </span>
-                  <span>→</span>
-                </Link>
+        {/* Sidebar Navigation */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-1.5">
+          <div className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider px-3 mb-2">
+            Main Menu
+          </div>
 
-                <Link
-                  href="/admin/settings"
-                  className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-50 hover:bg-green-50 text-gray-800 hover:text-[#0C831F] font-semibold text-xs border border-gray-200 transition"
-                >
-                  <span className="flex items-center gap-2">
-                    <SettingsIcon className="w-4 h-4" /> Store Settings & Delivery
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeSection === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setActiveSection(item.id);
+                  setSidebarOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  isActive
+                    ? 'bg-[#0C831F] text-white shadow-xs'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-gray-500'}`} />
+                  <span>{item.label}</span>
+                </div>
+                {item.badge !== null && item.badge !== undefined && (
+                  <span
+                    className={`text-[10px] font-extrabold px-1.5 py-0.2 rounded-full ${
+                      isActive ? 'bg-white/30 text-white' : 'bg-amber-100 text-amber-700'
+                    }`}
+                  >
+                    {item.badge}
                   </span>
-                  <span>→</span>
-                </Link>
+                )}
+              </button>
+            );
+          })}
 
-                <Link
-                  href="/admin/items"
-                  className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-50 hover:bg-green-50 text-gray-800 hover:text-[#0C831F] font-semibold text-xs border border-gray-200 transition"
+          <div className="pt-4 mt-4 border-t border-gray-100">
+            <div className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider px-3 mb-2">
+              External
+            </div>
+
+            {/* View Live Site Link (Directly requested by user) */}
+            <Link
+              href="/"
+              target="_blank"
+              rel="noreferrer"
+              className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold text-gray-700 hover:bg-green-50 hover:text-[#0C831F] transition group"
+            >
+              <div className="flex items-center gap-2.5">
+                <ExternalLink className="w-4 h-4 text-gray-500 group-hover:text-[#0C831F]" />
+                <span>View Live Site</span>
+              </div>
+              <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+            </Link>
+          </div>
+        </div>
+
+        {/* Sidebar Footer with Log Out */}
+        <div className="p-4 border-t border-gray-100 bg-gray-50/50">
+          <div className="flex items-center justify-between mb-3 px-1">
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-gray-900 truncate">{user?.phone || 'Admin'}</p>
+              <span className="text-[10px] text-gray-500">Administrator</span>
+            </div>
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          </div>
+
+          <button
+            onClick={() => {
+              logout();
+              router.replace('/login');
+            }}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50 border border-red-200 transition cursor-pointer"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col overflow-hidden h-[calc(100vh-53px)] md:h-screen bg-gray-100">
+        {/* Section 1: Dashboard Overview */}
+        {activeSection === 'dashboard' && (
+          <div className="flex-1 overflow-y-auto p-4 md:p-8">
+            <div className="max-w-5xl mx-auto space-y-6">
+              {/* Dashboard Greeting Header */}
+              <div className="bg-gradient-to-r from-[#0C831F] to-[#10A328] text-white p-6 rounded-3xl shadow-sm">
+                <span className="bg-white/20 text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider inline-block mb-2">
+                  Store Operations
+                </span>
+                <h2 className="text-2xl font-black tracking-tight">Admin Operations Dashboard</h2>
+                <p className="text-xs md:text-sm text-green-100 mt-1">
+                  Manage live incoming orders, edit catalog visibility and photos, and oversee users.
+                </p>
+              </div>
+
+              {/* 3 Main Action Cards: Manage Orders, Edit Items, Manage Users */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* 1. Manage Orders Card */}
+                <div
+                  onClick={() => setActiveSection('orders')}
+                  className="bg-white rounded-3xl p-6 border border-gray-200 shadow-2xs hover:shadow-md hover:border-[#0C831F] transition cursor-pointer flex flex-col justify-between group"
                 >
-                  <span className="flex items-center gap-2">
-                    <ShoppingBag className="w-4 h-4" /> Fullscreen Catalog Manager
-                  </span>
-                  <span>→</span>
-                </Link>
+                  <div>
+                    <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center mb-4 group-hover:scale-105 transition">
+                      <Package className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-base font-extrabold text-gray-900 group-hover:text-[#0C831F] transition">
+                      Manage Orders
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Live customer orders, completed deliveries, and cancellations.
+                    </p>
+                  </div>
+
+                  <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between">
+                    <div>
+                      <span className="text-2xl font-black text-gray-900">{stats.liveOrders}</span>
+                      <span className="text-[11px] text-amber-600 font-bold ml-1.5">Live Pending</span>
+                    </div>
+                    <span className="text-xs font-bold text-[#0C831F] group-hover:translate-x-1 transition flex items-center gap-1">
+                      Open Orders →
+                    </span>
+                  </div>
+                </div>
+
+                {/* 2. Edit Items Card */}
+                <div
+                  onClick={() => setActiveSection('items')}
+                  className="bg-white rounded-3xl p-6 border border-gray-200 shadow-2xs hover:shadow-md hover:border-[#0C831F] transition cursor-pointer flex flex-col justify-between group"
+                >
+                  <div>
+                    <div className="w-12 h-12 rounded-2xl bg-green-50 text-[#0C831F] border border-green-200 flex items-center justify-center mb-4 group-hover:scale-105 transition">
+                      <ShoppingBag className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-base font-extrabold text-gray-900 group-hover:text-[#0C831F] transition">
+                      Edit Items
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Toggle online store visibility and upload multiple product photos.
+                    </p>
+                  </div>
+
+                  <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between">
+                    <div>
+                      <span className="text-2xl font-black text-gray-900">{stats.onlineItems}</span>
+                      <span className="text-[11px] text-[#0C831F] font-bold ml-1.5">/ {stats.totalItems} Online</span>
+                    </div>
+                    <span className="text-xs font-bold text-[#0C831F] group-hover:translate-x-1 transition flex items-center gap-1">
+                      Edit Catalog →
+                    </span>
+                  </div>
+                </div>
+
+                {/* 3. Manage Users Card */}
+                <div
+                  onClick={() => setActiveSection('users')}
+                  className="bg-white rounded-3xl p-6 border border-gray-200 shadow-2xs hover:shadow-md hover:border-[#0C831F] transition cursor-pointer flex flex-col justify-between group"
+                >
+                  <div>
+                    <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 border border-purple-200 flex items-center justify-center mb-4 group-hover:scale-105 transition">
+                      <Users className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-base font-extrabold text-gray-900 group-hover:text-[#0C831F] transition">
+                      Manage Users
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-1">
+                      View registered phone numbers, address records, and staff roles.
+                    </p>
+                  </div>
+
+                  <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between">
+                    <div>
+                      <span className="text-2xl font-black text-gray-900">{stats.totalUsers}</span>
+                      <span className="text-[11px] text-purple-600 font-bold ml-1.5">Users</span>
+                    </div>
+                    <span className="text-xs font-bold text-[#0C831F] group-hover:translate-x-1 transition flex items-center gap-1">
+                      Manage Users →
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         )}
-      </div>
+
+        {/* Section 2: Manage Orders (Live, Completed, Canceled) */}
+        {activeSection === 'orders' && (
+          <div className="flex-1 bg-white overflow-hidden flex flex-col">
+            <AdminOrdersManager />
+          </div>
+        )}
+
+        {/* Section 3: Edit Items (Catalog & Photos) */}
+        {activeSection === 'items' && (
+          <div className="flex-1 bg-white overflow-hidden flex flex-col">
+            <AdminItemsManager />
+          </div>
+        )}
+
+        {/* Section 4: Manage Users */}
+        {activeSection === 'users' && (
+          <div className="flex-1 bg-white overflow-hidden flex flex-col">
+            <AdminUsersManager />
+          </div>
+        )}
+      </main>
     </div>
   );
 }

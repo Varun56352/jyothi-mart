@@ -26,9 +26,11 @@ export function AuthProvider({ children }) {
 
   const login = async (phone, otp) => {
     const res = await verifyOtp(phone, otp);
-    const { token, user: userData } = res.data;
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(userData));
+    const payload = res.data?.data || res.data;
+    const token = payload?.token;
+    const userData = payload?.user;
+    if (token) localStorage.setItem('token', token);
+    if (userData) localStorage.setItem('user', JSON.stringify(userData));
     setUser(userData);
     return userData;
   };

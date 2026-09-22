@@ -31,6 +31,8 @@ export const updateAdminOrder = (id, data) => api.put(`/admin/orders/${id}`, dat
 export const getDeliveryPersonnel = () => api.get('/admin/delivery-personnel');
 export const getAdminSettings = () => api.get('/admin/settings');
 export const updateAdminSettings = (data) => api.put('/admin/settings', data);
+export const getAdminUsers = () => api.get('/admin/users');
+export const updateAdminUser = (id, data) => api.put(`/admin/users/${id}`, data);
 
 // Delivery API
 export const getDeliveryOrders = (params) => api.get('/delivery/orders', { params });
