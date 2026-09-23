@@ -24,8 +24,8 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  const login = async (phone, otp) => {
-    const res = await verifyOtp(phone, otp);
+  const login = async (phone, otp, firebaseToken, firebaseUid) => {
+    const res = await verifyOtp(phone, otp, firebaseToken, firebaseUid);
     const payload = res.data?.data || res.data;
     const token = payload?.token;
     const userData = payload?.user;

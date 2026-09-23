@@ -1,8 +1,10 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { X, ArrowRight, Loader2, Phone, KeyRound, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, ArrowRight, Loader2, KeyRound, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { sendOtp } from '@/lib/api';
+import { auth } from '@/lib/firebase';
+import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 
 export default function LoginModal() {
   const { isLoginModalOpen, closeLoginModal, login } = useAuth();
@@ -13,6 +15,20 @@ export default function LoginModal() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isNewUser, setIsNewUser] = useState(false);
+  const [confirmationResult, setConfirmationResult] = useState(null);
+  const [countdown, setCountdown] = useState(0);
+
+  // Clear reCAPTCHA instance safely
+  const clearRecaptcha = () => {
+    if (typeof window !== 'undefined' && window.recaptchaVerifier) {
+      try {
+        window.recaptchaVerifier.clear();
+      } catch (e) {
+        console.warn('Error clearing reCAPTCHA verifier:', e);
+      }
+      window.recaptchaVerifier = null;
+    }
+  };
 
   // Reset state whenever modal opens or closes
   useEffect(() => {
@@ -23,13 +39,58 @@ export default function LoginModal() {
       setError('');
       setLoading(false);
       setIsNewUser(false);
+      setConfirmationResult(null);
+      setCountdown(0);
+    } else {
+      clearRecaptcha();
     }
   }, [isLoginModalOpen]);
 
+  // Clean up on component unmount
+  useEffect(() => {
+    return () => {
+      clearRecaptcha();
+    };
+  }, []);
+
+  // Countdown timer for Resend OTP
+  useEffect(() => {
+    let timer;
+    if (step === 2 && countdown > 0) {
+      timer = setInterval(() => {
+        setCountdown((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [step, countdown]);
+
   if (!isLoginModalOpen) return null;
 
+  // Initialize or get invisible reCAPTCHA verifier
+  const getRecaptchaVerifier = () => {
+    if (!auth) {
+      throw new Error('Authentication service is not available. Please refresh the page.');
+    }
+    clearRecaptcha();
+
+    const verifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+      size: 'invisible',
+      callback: () => {
+        // reCAPTCHA solved
+      },
+      'expired-callback': () => {
+        setError('reCAPTCHA session expired. Please click Continue again.');
+      },
+    });
+
+    window.recaptchaVerifier = verifier;
+    return verifier;
+  };
+
   const handleSendOtp = async (e) => {
-    e?.preventDefault();
+    e?.preventDefault?.();
     const cleanPhone = phone.replace(/\D/g, '').trim();
 
     if (!cleanPhone || cleanPhone.length !== 10) {
@@ -41,24 +102,52 @@ export default function LoginModal() {
     setError('');
 
     try {
+      // 1. Inform backend to create/sync StoreUser in MongoDB Atlas
       const res = await sendOtp(cleanPhone);
       const data = res.data || {};
       setIsNewUser(Boolean(data.isNewUser));
+
+      // 2. Setup Firebase Invisible Recaptcha & trigger Phone Auth SMS
+      const appVerifier = getRecaptchaVerifier();
+      const formattedPhone = `+91${cleanPhone}`;
+      const confirmation = await signInWithPhoneNumber(auth, formattedPhone, appVerifier);
+      setConfirmationResult(confirmation);
+
       setStep(2);
+      setCountdown(30);
     } catch (err) {
       console.error('Failed to send OTP:', err);
-      setError(err.response?.data?.message || 'Failed to send OTP. Please check your number.');
+      clearRecaptcha();
+
+      let msg = 'Failed to send OTP. Please check your number.';
+      if (err.code === 'auth/invalid-phone-number') {
+        msg = 'Invalid mobile number format.';
+      } else if (err.code === 'auth/quota-exceeded') {
+        msg = 'SMS quota exceeded for today. You can still test with OTP 1234.';
+      } else if (err.code === 'auth/too-many-requests') {
+        msg = 'Too many requests. Please wait a minute and try again.';
+      } else if (err.code === 'auth/unauthorized-domain') {
+        msg = 'Domain not authorized in Firebase Console. Please add your domain to Authorized Domains.';
+      } else if (err.code === 'auth/captcha-check-failed') {
+        msg = 'reCAPTCHA verification failed. Please try again.';
+      } else if (err.response?.data?.message) {
+        msg = err.response.data.message;
+      } else if (err.message) {
+        msg = err.message;
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }
   };
 
   const handleVerifyOtp = async (e) => {
-    e?.preventDefault();
+    e?.preventDefault?.();
     const cleanOtp = otp.trim();
+    const cleanPhone = phone.replace(/\D/g, '').trim();
 
-    if (!cleanOtp || cleanOtp.length < 4) {
-      setError('Please enter the 4-digit OTP');
+    if (!cleanOtp || (cleanOtp.length !== 6 && cleanOtp !== '1234')) {
+      setError('Please enter the 6-digit OTP sent to your phone');
       return;
     }
 
@@ -66,11 +155,37 @@ export default function LoginModal() {
     setError('');
 
     try {
-      await login(phone.replace(/\D/g, '').trim(), cleanOtp);
+      let firebaseToken = null;
+      let firebaseUid = null;
+
+      if (cleanOtp === '1234') {
+        // Fallback test OTP for testing
+        await login(cleanPhone, cleanOtp);
+      } else if (confirmationResult) {
+        // Confirm real Firebase SMS OTP
+        const userCredential = await confirmationResult.confirm(cleanOtp);
+        firebaseToken = await userCredential.user.getIdToken();
+        firebaseUid = userCredential.user.uid;
+        await login(cleanPhone, cleanOtp, firebaseToken, firebaseUid);
+      } else {
+        // Direct verification attempt with backend
+        await login(cleanPhone, cleanOtp);
+      }
+
       closeLoginModal();
     } catch (err) {
-      console.error('Login error:', err);
-      setError(err.response?.data?.message || 'Invalid OTP. Please enter test OTP 1234.');
+      console.error('Verification error:', err);
+      let msg = 'Invalid OTP. Please check the code and try again.';
+      if (err.code === 'auth/invalid-verification-code') {
+        msg = 'Incorrect 6-digit OTP. Please check the SMS and try again.';
+      } else if (err.code === 'auth/code-expired') {
+        msg = 'OTP has expired. Please click Resend OTP to receive a new code.';
+      } else if (err.response?.data?.message) {
+        msg = err.response.data.message;
+      } else if (err.message) {
+        msg = err.message;
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -83,6 +198,9 @@ export default function LoginModal() {
 
       {/* Modal Dialog */}
       <div className="relative bg-white w-full max-w-sm rounded-3xl p-6 sm:p-7 shadow-2xl border border-gray-100 z-10 animate-in zoom-in-95 duration-150">
+        {/* Invisible reCAPTCHA container */}
+        <div id="recaptcha-container"></div>
+
         {/* Close Button */}
         <button
           onClick={closeLoginModal}
@@ -165,7 +283,7 @@ export default function LoginModal() {
                 Enter Verification Code
               </h3>
               <div className="flex items-center justify-center gap-1.5 mt-1 text-xs text-gray-500">
-                <span>We sent an OTP to</span>
+                <span>We sent an SMS OTP to</span>
                 <span className="font-bold text-gray-800">+91 {phone}</span>
                 <button
                   type="button"
@@ -173,6 +291,7 @@ export default function LoginModal() {
                     setStep(1);
                     setOtp('');
                     setError('');
+                    setConfirmationResult(null);
                   }}
                   className="text-[#0C831F] font-bold hover:underline cursor-pointer ml-1"
                 >
@@ -197,25 +316,25 @@ export default function LoginModal() {
             <form onSubmit={handleVerifyOtp} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">
-                  4-Digit OTP
+                  6-Digit OTP
                 </label>
                 <input
                   type="text"
-                  maxLength={4}
+                  maxLength={6}
                   value={otp}
                   onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
                   className="w-full border border-gray-200 rounded-2xl py-3 text-center text-xl font-black tracking-widest focus:outline-none focus:border-[#0C831F] focus:ring-2 focus:ring-[#0C831F]/20 transition"
-                  placeholder="• • • •"
+                  placeholder="• • • • • •"
                   autoFocus
                 />
                 <p className="text-[11px] text-gray-400 text-center mt-1.5">
-                  Test OTP: <strong className="text-gray-700 font-bold">1234</strong>
+                  Enter the 6-digit code received via SMS
                 </p>
               </div>
 
               <button
                 type="submit"
-                disabled={loading || otp.length < 4}
+                disabled={loading || (otp.length !== 6 && otp !== '1234')}
                 className="w-full bg-[#0C831F] hover:bg-green-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-3.5 rounded-2xl transition shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed active:scale-[0.98]"
               >
                 {loading ? (
@@ -227,14 +346,20 @@ export default function LoginModal() {
             </form>
 
             <div className="mt-4 text-center">
-              <button
-                type="button"
-                onClick={handleSendOtp}
-                disabled={loading}
-                className="text-xs font-bold text-[#0C831F] hover:underline cursor-pointer disabled:opacity-50"
-              >
-                Resend OTP
-              </button>
+              {countdown > 0 ? (
+                <span className="text-xs text-gray-400 select-none">
+                  Resend OTP in <strong className="text-gray-600 font-bold">{countdown}s</strong>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSendOtp}
+                  disabled={loading}
+                  className="text-xs font-bold text-[#0C831F] hover:underline cursor-pointer disabled:opacity-50"
+                >
+                  Resend OTP
+                </button>
+              )}
             </div>
           </div>
         )}

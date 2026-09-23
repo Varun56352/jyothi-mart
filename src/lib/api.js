@@ -15,7 +15,8 @@ api.interceptors.request.use((config) => {
 });
 
 export const sendOtp = (phone) => api.post('/auth/send-otp', { phone });
-export const verifyOtp = (phone, otp) => api.post('/auth/verify-otp', { phone, otp });
+export const verifyOtp = (phone, otp, firebaseToken, firebaseUid) =>
+  api.post('/auth/verify-otp', { phone, otp, firebaseToken, firebaseUid });
 export const getStoreInfo = () => api.get('/info');
 export const getCatalog = (params) => api.get('/catalog', { params });
 export const getCategories = () => api.get('/catalog/categories').catch(() => api.get('/categories'));
