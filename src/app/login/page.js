@@ -76,6 +76,7 @@ export default function LoginPage() {
       clearRecaptcha();
       let msg = 'Failed to send OTP. Please check your number.';
       if (err.code === 'auth/invalid-phone-number') msg = 'Invalid mobile number format.';
+      else if (err.code === 'auth/operation-not-allowed') msg = 'SMS for India (+91) must be enabled in Firebase Console: Authentication > Settings > SMS region policy.';
       else if (err.code === 'auth/quota-exceeded') msg = 'SMS quota exceeded for today. You can still test with OTP 1234.';
       else if (err.code === 'auth/unauthorized-domain') msg = 'Domain not authorized in Firebase Console.';
       else if (err.response?.data?.message) msg = err.response.data.message;
