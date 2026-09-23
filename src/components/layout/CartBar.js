@@ -3,10 +3,16 @@ import { useCart } from '@/context/CartContext';
 import { formatPrice } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
 
 export default function CartBar() {
+  const pathname = usePathname();
   const { cartCount, cartTotal } = useCart();
+
+  if (pathname.startsWith('/admin') || pathname.startsWith('/delivery')) {
+    return null;
+  }
 
   return (
     <AnimatePresence>

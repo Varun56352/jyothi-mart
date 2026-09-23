@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   Menu,
   X,
+  Settings,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getAdminOrders, getAdminItems, getAdminUsers } from '@/lib/api';
@@ -93,6 +94,7 @@ export default function AdminPage() {
     { id: 'orders', label: 'Manage Orders', icon: Package, badge: stats.liveOrders > 0 ? stats.liveOrders : null },
     { id: 'items', label: 'Edit Items', icon: ShoppingBag },
     { id: 'users', label: 'Manage Users', icon: Users },
+    { id: 'settings', label: 'Store & Delivery Settings', icon: Settings, href: '/admin/settings' },
   ];
 
   return (
@@ -153,6 +155,23 @@ export default function AdminPage() {
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeSection === item.id;
+
+            if (item.href) {
+              return (
+                <Link
+                  key={item.id}
+                  href={item.href}
+                  className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Icon className="w-4 h-4 text-gray-500" />
+                    <span>{item.label}</span>
+                  </div>
+                  <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+                </Link>
+              );
+            }
+
             return (
               <button
                 key={item.id}
@@ -244,8 +263,8 @@ export default function AdminPage() {
                 </p>
               </div>
 
-              {/* 3 Main Action Cards: Manage Orders, Edit Items, Manage Users */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* 4 Main Action Cards: Manage Orders, Edit Items, Manage Users, Store Settings */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* 1. Manage Orders Card */}
                 <div
                   onClick={() => setActiveSection('orders')}
@@ -329,6 +348,31 @@ export default function AdminPage() {
                     </span>
                   </div>
                 </div>
+
+                {/* 4. Store & Delivery Settings Card */}
+                <Link
+                  href="/admin/settings"
+                  className="bg-white rounded-3xl p-6 border border-gray-200 shadow-2xs hover:shadow-md hover:border-[#0C831F] transition cursor-pointer flex flex-col justify-between group"
+                >
+                  <div>
+                    <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center mb-4 group-hover:scale-105 transition">
+                      <Settings className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-base font-extrabold text-gray-900 group-hover:text-[#0C831F] transition">
+                      Store & Delivery Settings
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Warehouse GPS location, delivery radius (km), timings & fees.
+                    </p>
+                  </div>
+
+                  <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between">
+                    <span className="text-xs font-bold text-gray-500">Warehouse & Radius</span>
+                    <span className="text-xs font-bold text-[#0C831F] group-hover:translate-x-1 transition flex items-center gap-1">
+                      Configure →
+                    </span>
+                  </div>
+                </Link>
               </div>
             </div>
           </div>

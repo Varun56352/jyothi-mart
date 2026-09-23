@@ -16,16 +16,21 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useLocation } from '@/context/LocationContext';
 import LocationPickerModal from '@/components/common/LocationPickerModal';
 
 export default function Header() {
+  const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { user, isAdmin, logout } = useAuth();
   const router = useRouter();
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
   const { address, deliveryTimeEstimate, isServiceable, loadingLocation } = useLocation();
+
+  if (pathname.startsWith('/admin') || pathname.startsWith('/delivery')) {
+    return null;
+  }
 
   const handleLogout = () => {
     logout();
