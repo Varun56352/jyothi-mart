@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 let googleMapsPromise = null;
 
@@ -13,7 +13,7 @@ export function loadGoogleMapsScript(apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAP
 
   if (!googleMapsPromise) {
     googleMapsPromise = new Promise((resolve, reject) => {
-      const existing = document.querySelector('script[src*=maps.googleapis.com]');
+      const existing = document.querySelector('script[src*="maps.googleapis.com"]');
       if (existing) {
         existing.addEventListener('load', () => resolve(window.google.maps));
         existing.addEventListener('error', (e) => reject(e));
