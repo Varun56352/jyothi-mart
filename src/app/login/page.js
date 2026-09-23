@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { ShieldCheck, ArrowRight, Loader2, Phone, KeyRound } from 'lucide-react';
+import { sendOtp } from '@/lib/api';
 
 export default function LoginPage() {
   const [phone, setPhone] = useState('');
@@ -13,14 +14,23 @@ export default function LoginPage() {
   const { login } = useAuth();
   const router = useRouter();
 
-  const handleSendOtp = (e) => {
+  const handleSendOtp = async (e) => {
     e?.preventDefault();
-    if (!phone || phone.trim().length < 10) {
+    const cleanPhone = phone.replace(/\D/g, '').trim();
+    if (!cleanPhone || cleanPhone.length < 10) {
       setError('Please enter a valid 10-digit phone number');
       return;
     }
+    setLoading(true);
     setError('');
-    setStep(2);
+    try {
+      await sendOtp(cleanPhone);
+      setStep(2);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to send OTP. Please check your number.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleVerify = async (e) => {

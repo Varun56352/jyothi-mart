@@ -41,11 +41,28 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+
+  const openLoginModal = () => setIsLoginModalOpen(true);
+  const closeLoginModal = () => setIsLoginModalOpen(false);
+
   const isAdmin = user?.role === 'admin';
   const isDelivery = user?.role === 'delivery';
 
   return (
-    <AuthContext.Provider value={{ user, isAdmin, isDelivery, login, logout, loading }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isAdmin,
+        isDelivery,
+        login,
+        logout,
+        loading,
+        isLoginModalOpen,
+        openLoginModal,
+        closeLoginModal,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

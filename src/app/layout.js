@@ -6,6 +6,7 @@ import { LocationProvider } from '@/context/LocationContext';
 import Header from '@/components/layout/Header';
 import BottomNav from '@/components/layout/BottomNav';
 import CartBar from '@/components/layout/CartBar';
+import LoginModal from '@/components/common/LoginModal';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -28,6 +29,7 @@ export default function RootLayout({ children }) {
                 </main>
                 <CartBar />
                 <BottomNav />
+                <LoginModal />
               </div>
             </CartProvider>
           </LocationProvider>

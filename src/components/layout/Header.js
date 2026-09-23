@@ -23,7 +23,7 @@ import LocationPickerModal from '@/components/common/LocationPickerModal';
 export default function Header() {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const { user, isAdmin, logout } = useAuth();
+  const { user, isAdmin, logout, openLoginModal } = useAuth();
   const router = useRouter();
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
   const { address, deliveryTimeEstimate, isServiceable, loadingLocation } = useLocation();
@@ -35,7 +35,7 @@ export default function Header() {
   const handleLogout = () => {
     logout();
     setDrawerOpen(false);
-    router.push('/login');
+    router.push('/');
   };
 
   return (
@@ -79,25 +79,40 @@ export default function Header() {
             Jyothi Mart
           </Link>
 
-          {/* Right: Admin Pill (if admin) + Profile Button */}
+          {/* Right: Login Button (if guest) OR Admin Pill + Profile (if user) */}
           <div className="flex items-center space-x-2">
-            {isAdmin && (
-              <Link
-                href="/admin"
-                className="hidden sm:inline-flex items-center gap-1 bg-green-50 hover:bg-green-100 border border-green-200 text-[#0C831F] px-2.5 py-1 rounded-full text-xs font-bold transition"
-              >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Admin</span>
-              </Link>
-            )}
+            {user ? (
+              <>
+                {isAdmin && (
+                  <Link
+                    href="/admin"
+                    className="inline-flex items-center gap-1 bg-green-50 hover:bg-green-100 border border-green-200 text-[#0C831F] px-2.5 py-1 rounded-full text-xs font-bold transition"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Admin</span>
+                  </Link>
+                )}
 
-            <button
-              onClick={() => setDrawerOpen(true)}
-              className="p-2 bg-gray-100 hover:bg-gray-200 rounded-full text-gray-700 transition cursor-pointer"
-              aria-label="User account menu"
-            >
-              <User className="w-4 h-4" />
-            </button>
+                <button
+                  onClick={() => setDrawerOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-full text-gray-700 transition cursor-pointer text-xs font-bold"
+                  aria-label="User account menu"
+                >
+                  <User className="w-4 h-4 text-[#0C831F]" />
+                  <span className="hidden sm:inline">
+                    {user.name || (user.phone ? `+91 ${user.phone.slice(-4)}` : 'Account')}
+                  </span>
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={openLoginModal}
+                className="bg-[#0C831F] hover:bg-green-700 text-white text-xs font-extrabold px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Login</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -253,14 +268,16 @@ export default function Header() {
                   <span>Log Out</span>
                 </button>
               ) : (
-                <Link
-                  href="/login"
-                  onClick={() => setDrawerOpen(false)}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-bold text-[#0C831F] bg-green-50 hover:bg-green-100 rounded-xl transition"
+                <button
+                  onClick={() => {
+                    setDrawerOpen(false);
+                    openLoginModal();
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-bold text-white bg-[#0C831F] hover:bg-green-700 rounded-xl transition cursor-pointer shadow-2xs"
                 >
                   <LogIn className="w-4 h-4" />
-                  <span>Sign In</span>
-                </Link>
+                  <span>Login / Sign Up</span>
+                </button>
               )}
             </div>
           </div>
