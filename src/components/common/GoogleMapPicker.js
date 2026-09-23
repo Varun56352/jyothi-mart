@@ -14,6 +14,8 @@ export default function GoogleMapPicker({
   const mapRef = useRef(null);
   const circleRef = useRef(null);
   const warehouseMarkerRef = useRef(null);
+  const userDotMarkerRef = useRef(null);
+  const accuracyCircleRef = useRef(null);
   const autocompleteRef = useRef(null);
   const searchInputRef = useRef(null);
 
@@ -32,10 +34,10 @@ export default function GoogleMapPicker({
 
         const startCenter = initialCoords || storeCenter || { lat: 18.8256, lng: 78.9135 };
 
-        // Clean modern Google Maps styling (removes clutter like POI clutter for a clean Blinkit look)
+        // Clean modern Google Maps styling with deep zoom 18 for doorstep precision
         const mapOptions = {
           center: { lat: startCenter.lat, lng: startCenter.lng },
-          zoom: 16,
+          zoom: 18,
           disableDefaultUI: true,
           zoomControl: false,
           gestureHandling: 'greedy',
@@ -168,9 +170,48 @@ export default function GoogleMapPicker({
     setLocatingUser(true);
     try {
       const pos = await getCurrentPosition();
-      if (mapRef.current) {
+      if (mapRef.current && window.google?.maps) {
+        const gMaps = window.google.maps;
         mapRef.current.panTo({ lat: pos.lat, lng: pos.lng });
-        mapRef.current.setZoom(17);
+        mapRef.current.setZoom(18);
+
+        // User blue GPS dot
+        if (!userDotMarkerRef.current) {
+          userDotMarkerRef.current = new gMaps.Marker({
+            position: { lat: pos.lat, lng: pos.lng },
+            map: mapRef.current,
+            icon: {
+              path: gMaps.SymbolPath.CIRCLE,
+              scale: 8,
+              fillColor: '#4285F4',
+              fillOpacity: 1,
+              strokeColor: '#ffffff',
+              strokeWeight: 3,
+            },
+            zIndex: 10,
+          });
+        } else {
+          userDotMarkerRef.current.setPosition({ lat: pos.lat, lng: pos.lng });
+        }
+
+        // GPS accuracy circle
+        if (pos.accuracy && pos.accuracy < 1000) {
+          if (!accuracyCircleRef.current) {
+            accuracyCircleRef.current = new gMaps.Circle({
+              map: mapRef.current,
+              center: { lat: pos.lat, lng: pos.lng },
+              radius: pos.accuracy,
+              fillColor: '#4285F4',
+              fillOpacity: 0.12,
+              strokeColor: '#4285F4',
+              strokeOpacity: 0.4,
+              strokeWeight: 1,
+            });
+          } else {
+            accuracyCircleRef.current.setCenter({ lat: pos.lat, lng: pos.lng });
+            accuracyCircleRef.current.setRadius(pos.accuracy);
+          }
+        }
       }
     } catch (err) {
       console.warn('Locate error:', err);

@@ -49,7 +49,7 @@ export function getCurrentPosition(options = {}) {
         };
         reject(new Error(messages[error.code] || 'Unable to get your location'));
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000, ...options }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0, ...options }
     );
   });
 }
@@ -70,11 +70,10 @@ export async function reverseGeocode(lat, lng) {
         let sublocality = '';
         let locality = '';
         let city = '';
-        let route = '';
 
         place.address_components.forEach((c) => {
           if (c.types.includes('sublocality_level_1') || c.types.includes('sublocality')) {
-            sublocality = c.long_name;
+            if (!sublocality) sublocality = c.long_name;
           }
           if (c.types.includes('locality')) {
             city = c.long_name;
@@ -82,18 +81,20 @@ export async function reverseGeocode(lat, lng) {
           if (c.types.includes('administrative_area_level_2')) {
             locality = c.long_name;
           }
-          if (c.types.includes('route')) {
-            route = c.long_name;
-          }
         });
 
+        // Clean address extraction from formatted address
+        const addressParts = place.formatted_address
+          ? place.formatted_address.split(',').map((s) => s.trim()).filter((s) => !s.toLowerCase().includes('india'))
+          : [];
         const short =
-          [route || sublocality, city || locality].filter(Boolean).join(', ') ||
-          place.formatted_address.split(',').slice(0, 2).join(',');
+          addressParts.slice(0, 2).join(', ') ||
+          [sublocality || locality, city].filter(Boolean).join(', ') ||
+          place.formatted_address;
 
         return {
           formatted: place.formatted_address,
-          short: short || place.formatted_address,
+          short,
           locality: sublocality || locality || city,
           city: city || locality,
         };
