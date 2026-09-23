@@ -54,10 +54,88 @@ export function getCurrentPosition(options = {}) {
   });
 }
 
+const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyCoTlnSpjVx1nAv70I_SWmPN0T5zCusb68';
+
 /**
- * Reverse geocode coordinates to address using Nominatim (free, no API key)
+ * Reverse geocode coordinates to address (prioritizes Google Maps Geocoder, falls back to Nominatim)
  */
 export async function reverseGeocode(lat, lng) {
+  // 1. Try Google Maps JS Geocoder if loaded in window
+  if (typeof window !== 'undefined' && window.google?.maps?.Geocoder) {
+    try {
+      const geocoder = new window.google.maps.Geocoder();
+      const res = await geocoder.geocode({ location: { lat, lng } });
+      if (res.results && res.results[0]) {
+        const place = res.results[0];
+        let sublocality = '';
+        let locality = '';
+        let city = '';
+        let route = '';
+
+        place.address_components.forEach((c) => {
+          if (c.types.includes('sublocality_level_1') || c.types.includes('sublocality')) {
+            sublocality = c.long_name;
+          }
+          if (c.types.includes('locality')) {
+            city = c.long_name;
+          }
+          if (c.types.includes('administrative_area_level_2')) {
+            locality = c.long_name;
+          }
+          if (c.types.includes('route')) {
+            route = c.long_name;
+          }
+        });
+
+        const short =
+          [route || sublocality, city || locality].filter(Boolean).join(', ') ||
+          place.formatted_address.split(',').slice(0, 2).join(',');
+
+        return {
+          formatted: place.formatted_address,
+          short: short || place.formatted_address,
+          locality: sublocality || locality || city,
+          city: city || locality,
+        };
+      }
+    } catch (e) {
+      // Fall through to HTTP
+    }
+  }
+
+  // 2. Try Google Maps HTTP Geocode
+  if (GOOGLE_API_KEY) {
+    try {
+      const res = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_API_KEY}`
+      );
+      const data = await res.json();
+      if (data.status === 'OK' && data.results?.[0]) {
+        const place = data.results[0];
+        let sublocality = '';
+        let locality = '';
+        let city = '';
+        place.address_components?.forEach((c) => {
+          if (c.types.includes('sublocality')) sublocality = c.long_name;
+          if (c.types.includes('locality')) city = c.long_name;
+          if (c.types.includes('administrative_area_level_2')) locality = c.long_name;
+        });
+        const short =
+          [sublocality, city || locality].filter(Boolean).join(', ') ||
+          place.formatted_address.split(',').slice(0, 2).join(',');
+        return {
+          formatted: place.formatted_address,
+          short: short || place.formatted_address,
+          locality: sublocality || locality || city,
+          city: city || locality,
+        };
+      }
+    } catch (err) {
+      // Fall through to Nominatim
+    }
+  }
+
+  // 3. Fallback to Nominatim
   try {
     const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1&zoom=18`,
@@ -78,7 +156,10 @@ export async function reverseGeocode(lat, lng) {
       locality,
       city,
       road,
-      short: parts.slice(0, 2).join(', ') || data.display_name?.split(',').slice(0, 2).join(',') || `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+      short:
+        parts.slice(0, 2).join(', ') ||
+        data.display_name?.split(',').slice(0, 2).join(',') ||
+        `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
     };
   } catch (err) {
     console.error('Reverse geocode error:', err);
@@ -87,10 +168,56 @@ export async function reverseGeocode(lat, lng) {
 }
 
 /**
- * Search for places using Nominatim
+ * Search for places using Google Places Autocomplete or Nominatim
  */
 export async function searchPlaces(query) {
   if (!query || query.length < 3) return [];
+
+  // Try Google Places Autocomplete service if loaded in window
+  if (typeof window !== 'undefined' && window.google?.maps?.places?.AutocompleteService) {
+    try {
+      const service = new window.google.maps.places.AutocompleteService();
+      const predictions = await new Promise((resolve) => {
+        service.getPlacePredictions(
+          { input: query, componentRestrictions: { country: 'in' } },
+          (results, status) => {
+            if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
+              resolve(results);
+            } else {
+              resolve([]);
+            }
+          }
+        );
+      });
+
+      if (predictions.length > 0) {
+        // Geocode each prediction to get lat/lng
+        const geocoder = new window.google.maps.Geocoder();
+        const results = await Promise.all(
+          predictions.slice(0, 5).map(async (pred) => {
+            try {
+              const geo = await geocoder.geocode({ placeId: pred.place_id });
+              const loc = geo.results?.[0]?.geometry?.location;
+              return {
+                lat: loc?.lat() || 0,
+                lng: loc?.lng() || 0,
+                displayName: pred.description,
+                short: pred.structured_formatting?.main_text || pred.description.split(',')[0],
+              };
+            } catch {
+              return null;
+            }
+          })
+        );
+        const filtered = results.filter((r) => r && r.lat !== 0);
+        if (filtered.length > 0) return filtered;
+      }
+    } catch (e) {
+      // Fall through to Nominatim
+    }
+  }
+
+  // Fallback to Nominatim
   try {
     const res = await fetch(
       `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1&countrycodes=in`,

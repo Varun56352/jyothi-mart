@@ -20,6 +20,16 @@ import { getCurrentPosition, reverseGeocode } from '@/lib/geoUtils';
 import { useAuth } from '@/context/AuthContext';
 import { getAdminSettings, updateAdminSettings } from '@/lib/api';
 import { SkeletonText } from '@/components/common/Skeleton';
+import dynamic from 'next/dynamic';
+
+const GoogleMapPicker = dynamic(() => import('@/components/common/GoogleMapPicker'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-48 bg-gray-100 rounded-xl animate-pulse flex items-center justify-center text-xs text-gray-400">
+      Loading Google Maps...
+    </div>
+  ),
+});
 
 export default function AdminSettingsPage() {
   const { user, isAdmin, loading: authLoading } = useAuth();
@@ -435,12 +445,30 @@ export default function AdminSettingsPage() {
                 </p>
               </div>
 
-              {/* Preview Info */}
+              {/* Preview Info & Interactive Map */}
               {Number(warehouseLat) !== 0 && (
-                <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-800">
-                  <p className="font-bold">✓ Warehouse Location Set</p>
-                  <p className="text-[11px] text-green-700 mt-0.5">
-                    {Number(warehouseLat).toFixed(6)}, {Number(warehouseLng).toFixed(6)} — Delivering within {radiusKm} km
+                <div className="space-y-2">
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-800">
+                    <p className="font-bold">✓ Warehouse Location Set</p>
+                    <p className="text-[11px] text-green-700 mt-0.5">
+                      {Number(warehouseLat).toFixed(6)}, {Number(warehouseLng).toFixed(6)} — Delivering within {radiusKm} km
+                    </p>
+                  </div>
+
+                  <div className="h-56 rounded-2xl overflow-hidden border border-gray-200 shadow-2xs relative">
+                    <GoogleMapPicker
+                      initialCoords={{ lat: Number(warehouseLat), lng: Number(warehouseLng) }}
+                      storeCenter={{ lat: Number(warehouseLat), lng: Number(warehouseLng) }}
+                      radiusKm={Number(radiusKm) || 3}
+                      onLocationChange={(lat, lng, geo) => {
+                        setWarehouseLat(lat);
+                        setWarehouseLng(lng);
+                        if (geo?.formatted) setStoreAddr(geo.formatted);
+                      }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-gray-400 text-center">
+                    Drag the map to fine-tune your warehouse pin location
                   </p>
                 </div>
               )}

@@ -1,12 +1,19 @@
 'use client';
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Crosshair, MapPin, Search, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { X, MapPin, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useLocation } from '@/context/LocationContext';
-import { searchPlaces, reverseGeocode } from '@/lib/geoUtils';
 
-// Dynamically import the map to avoid SSR issues with Leaflet
-const LeafletMap = dynamic(() => import('./LeafletMap'), { ssr: false, loading: () => <div className="w-full h-64 bg-gray-100 rounded-xl animate-pulse flex items-center justify-center"><Loader2 className="w-6 h-6 text-gray-400 animate-spin" /></div> });
+// Dynamically import GoogleMapPicker to prevent SSR issues
+const GoogleMapPicker = dynamic(() => import('./GoogleMapPicker'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full min-h-[300px] bg-gray-100 flex flex-col items-center justify-center space-y-2">
+      <Loader2 className="w-8 h-8 text-[#0C831F] animate-spin" />
+      <span className="text-xs font-bold text-gray-500">Loading Google Maps...</span>
+    </div>
+  ),
+});
 
 export default function LocationPickerModal({ isOpen, onClose }) {
   const {
@@ -15,16 +22,10 @@ export default function LocationPickerModal({ isOpen, onClose }) {
     isServiceable,
     distanceKm,
     deliveryTimeEstimate,
-    loadingLocation,
-    detectCurrentLocation,
     selectLocation,
     checkServiceability,
   } = useLocation();
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [searching, setSearching] = useState(false);
-  const [gpsError, setGpsError] = useState('');
   const [localCoords, setLocalCoords] = useState(coords);
   const [localServiceable, setLocalServiceable] = useState(isServiceable);
   const [localDistance, setLocalDistance] = useState(distanceKm);
@@ -32,7 +33,6 @@ export default function LocationPickerModal({ isOpen, onClose }) {
   const [localAddress, setLocalAddress] = useState('');
   const [localLocality, setLocalLocality] = useState('');
   const [localCity, setLocalCity] = useState('');
-  const searchTimeout = useRef(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -40,72 +40,25 @@ export default function LocationPickerModal({ isOpen, onClose }) {
       setLocalServiceable(isServiceable);
       setLocalDistance(distanceKm);
       setLocalEta(deliveryTimeEstimate);
-      setGpsError('');
-      setSearchQuery('');
-      setSearchResults([]);
     }
   }, [isOpen, coords, isServiceable, distanceKm, deliveryTimeEstimate]);
 
-  const handleSearchChange = (e) => {
-    const q = e.target.value;
-    setSearchQuery(q);
-    if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    if (q.length < 3) {
-      setSearchResults([]);
-      return;
-    }
-    setSearching(true);
-    searchTimeout.current = setTimeout(async () => {
-      const results = await searchPlaces(q);
-      setSearchResults(results);
-      setSearching(false);
-    }, 400);
-  };
-
-  const handleSelectSearchResult = async (place) => {
-    setSearchResults([]);
-    setSearchQuery('');
-    const newCoords = { lat: place.lat, lng: place.lng };
-    setLocalCoords(newCoords);
-    const geo = await reverseGeocode(place.lat, place.lng);
-    setLocalAddress(geo.short || geo.formatted);
-    setLocalLocality(geo.locality);
-    setLocalCity(geo.city);
-    const { distance, serviceable, eta } = checkServiceability(newCoords);
-    setLocalDistance(distance);
-    setLocalServiceable(serviceable);
-    setLocalEta(eta);
-  };
-
-  const handleDetectGPS = async () => {
-    setGpsError('');
-    try {
-      const result = await detectCurrentLocation();
-      setLocalCoords(result.coords);
-      setLocalAddress(result.address.short || result.address.formatted);
-      setLocalLocality(result.address.locality);
-      setLocalCity(result.address.city);
-      const { distance, serviceable, eta } = checkServiceability(result.coords);
+  const handleLocationChange = useCallback(
+    (lat, lng, geo) => {
+      const newCoords = { lat, lng };
+      setLocalCoords(newCoords);
+      if (geo) {
+        setLocalAddress(geo.short || geo.formatted);
+        setLocalLocality(geo.locality || '');
+        setLocalCity(geo.city || '');
+      }
+      const { distance, serviceable, eta } = checkServiceability(newCoords);
       setLocalDistance(distance);
       setLocalServiceable(serviceable);
       setLocalEta(eta);
-    } catch (err) {
-      setGpsError(err.message);
-    }
-  };
-
-  const handleMapDrag = useCallback(async (lat, lng) => {
-    const newCoords = { lat, lng };
-    setLocalCoords(newCoords);
-    const geo = await reverseGeocode(lat, lng);
-    setLocalAddress(geo.short || geo.formatted);
-    setLocalLocality(geo.locality);
-    setLocalCity(geo.city);
-    const { distance, serviceable, eta } = checkServiceability(newCoords);
-    setLocalDistance(distance);
-    setLocalServiceable(serviceable);
-    setLocalEta(eta);
-  }, [checkServiceability]);
+    },
+    [checkServiceability]
+  );
 
   const handleConfirm = () => {
     if (localCoords) {
@@ -126,93 +79,59 @@ export default function LocationPickerModal({ isOpen, onClose }) {
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-white">
-      {/* Top Bar */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white shadow-sm">
-        <h2 className="text-sm font-bold text-gray-900">Choose delivery location</h2>
-        <button onClick={onClose} className="p-1.5 rounded-full hover:bg-gray-100 transition cursor-pointer">
-          <X className="w-5 h-5 text-gray-600" />
-        </button>
-      </div>
-
-      {/* GPS + Search */}
-      <div className="px-4 py-3 space-y-2.5 bg-gray-50 border-b border-gray-200">
-        <button
-          onClick={handleDetectGPS}
-          disabled={loadingLocation}
-          className="w-full flex items-center justify-center gap-2 py-2.5 bg-white border-2 border-[#0C831F] text-[#0C831F] rounded-xl text-xs font-bold hover:bg-green-50 transition active:scale-[0.98] disabled:opacity-50 cursor-pointer"
-        >
-          {loadingLocation ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Crosshair className="w-4 h-4" />
-          )}
-          <span>{loadingLocation ? 'Detecting...' : 'Use Current Location'}</span>
-        </button>
-
-        {gpsError && (
-          <p className="text-[11px] text-red-600 bg-red-50 px-3 py-1.5 rounded-lg border border-red-200">
-            {gpsError}
-          </p>
-        )}
-
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={handleSearchChange}
-            placeholder="Search for area, street name..."
-            className="w-full pl-9 pr-3 py-2.5 text-xs bg-white border border-gray-300 rounded-xl focus:outline-none focus:border-[#0C831F]"
-          />
+      {/* Top Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white shadow-2xs z-30">
+        <div>
+          <h2 className="text-sm font-extrabold text-gray-900 leading-tight">Select Delivery Location</h2>
+          <p className="text-[11px] text-gray-500">Drag map to pin your exact doorstep</p>
         </div>
-
-        {/* Search Results Dropdown */}
-        {searchResults.length > 0 && (
-          <div className="bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto divide-y divide-gray-100">
-            {searchResults.map((place, idx) => (
-              <button
-                key={idx}
-                onClick={() => handleSelectSearchResult(place)}
-                className="w-full text-left px-3 py-2.5 hover:bg-gray-50 transition cursor-pointer"
-              >
-                <div className="flex items-start gap-2">
-                  <MapPin className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-xs text-gray-700 line-clamp-2">{place.short || place.displayName}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
+        <button
+          onClick={onClose}
+          className="p-1.5 rounded-full hover:bg-gray-100 text-gray-600 transition cursor-pointer"
+          aria-label="Close"
+        >
+          <X className="w-5 h-5" />
+        </button>
       </div>
 
-      {/* Map Area */}
-      <div className="flex-1 relative min-h-[200px]">
-        <LeafletMap
-          customerCoords={localCoords}
+      {/* Real Google Map with Blinkit Center Pin */}
+      <div className="flex-1 relative">
+        <GoogleMapPicker
+          initialCoords={localCoords}
           storeCenter={storeCenter}
           radiusKm={radiusKm}
-          onDragEnd={handleMapDrag}
+          onLocationChange={handleLocationChange}
         />
       </div>
 
-      {/* Bottom Status Card */}
-      <div className="px-4 py-3 bg-white border-t border-gray-200 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] safe-area-pb">
+      {/* Bottom Blinkit Delivery Details Card */}
+      <div className="px-4 py-3.5 bg-white border-t border-gray-200 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] z-30 safe-area-pb">
         {localCoords ? (
           <>
-            {localAddress && (
-              <div className="flex items-start gap-2 mb-2.5">
-                <MapPin className="w-4 h-4 text-[#0C831F] flex-shrink-0 mt-0.5" />
-                <p className="text-xs font-semibold text-gray-800 line-clamp-2">{localAddress}</p>
+            {/* Formatted Address */}
+            <div className="flex items-start gap-2 mb-2.5">
+              <div className="w-7 h-7 rounded-full bg-green-50 text-[#0C831F] flex items-center justify-center flex-shrink-0 mt-0.5">
+                <MapPin className="w-4 h-4" />
               </div>
-            )}
+              <div className="min-w-0 flex-1">
+                <h4 className="text-xs font-bold text-gray-900 truncate">
+                  {localLocality || 'Selected Location'}
+                </h4>
+                <p className="text-[11px] text-gray-500 line-clamp-2 leading-relaxed">
+                  {localAddress || `${localCoords.lat.toFixed(5)}, ${localCoords.lng.toFixed(5)}`}
+                </p>
+              </div>
+            </div>
 
+            {/* Serviceability Banner */}
             {localServiceable ? (
               <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-green-50 border border-green-200 rounded-xl">
                 <CheckCircle2 className="w-4 h-4 text-[#0C831F] flex-shrink-0" />
                 <div className="flex-1">
-                  <p className="text-xs font-bold text-[#0C831F]">Delivery available</p>
+                  <p className="text-xs font-bold text-[#0C831F]">Delivering to your location</p>
                   <p className="text-[11px] text-green-700">
-                    {localDistance ? `${localDistance} km away` : ''}{localEta ? ` · Est. ${localEta}` : ''}
+                    {localDistance !== null && localDistance !== undefined ? `${localDistance} km away` : ''}
+                    {localEta ? ` · Delivery in ${localEta}` : ' · Delivery in 10-15 mins'}
                   </p>
                 </div>
               </div>
@@ -220,30 +139,32 @@ export default function LocationPickerModal({ isOpen, onClose }) {
               <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-red-50 border border-red-200 rounded-xl">
                 <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
                 <div className="flex-1">
-                  <p className="text-xs font-bold text-red-700">Outside delivery area</p>
+                  <p className="text-xs font-bold text-red-700">Outside Delivery Zone</p>
                   <p className="text-[11px] text-red-600">
-                    {localDistance ? `${localDistance} km away — ` : ''}We deliver within {radiusKm} km
+                    {localDistance ? `${localDistance} km away — ` : ''}We deliver within {radiusKm} km of Jyothi Mart
                   </p>
                 </div>
               </div>
             )}
 
+            {/* Confirm Location Button */}
             <button
               onClick={handleConfirm}
               disabled={!localServiceable}
-              className={`w-full py-3 rounded-xl text-sm font-bold transition active:scale-[0.98] ${
+              className={`w-full py-3.5 rounded-2xl text-sm font-bold transition active:scale-[0.98] shadow-md flex items-center justify-center gap-2 ${
                 localServiceable
-                  ? 'bg-[#0C831F] text-white hover:bg-green-700 shadow-md cursor-pointer'
-                  : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  ? 'bg-[#0C831F] text-white hover:bg-green-700 cursor-pointer'
+                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'
               }`}
             >
-              {localServiceable ? 'Confirm Location' : 'Location not serviceable'}
+              <span>{localServiceable ? 'Confirm & Set Location' : 'Choose a Serviceable Location'}</span>
             </button>
           </>
         ) : (
-          <p className="text-center text-xs text-gray-500 py-4">
-            Use GPS or search to select your delivery location
-          </p>
+          <div className="text-center py-4">
+            <Loader2 className="w-6 h-6 text-[#0C831F] animate-spin mx-auto mb-1.5" />
+            <p className="text-xs text-gray-500 font-medium">Detecting your location on Google Maps...</p>
+          </div>
         )}
       </div>
     </div>
