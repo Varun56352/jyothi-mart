@@ -14,7 +14,9 @@ import {
   Check,
   AlertCircle,
   IndianRupee,
+  MapPin as MapPinIcon, Navigation, Target
 } from 'lucide-react';
+import { getCurrentPosition, reverseGeocode } from '@/lib/geoUtils';
 import { useAuth } from '@/context/AuthContext';
 import { getAdminSettings, updateAdminSettings } from '@/lib/api';
 import { SkeletonText } from '@/components/common/Skeleton';
@@ -38,6 +40,13 @@ export default function AdminSettingsPage() {
   const [openTime, setOpenTime] = useState('07:00');
   const [closeTime, setCloseTime] = useState('22:00');
   const [isOpen, setIsOpen] = useState(true);
+
+  // Delivery Zone State
+  const [warehouseLat, setWarehouseLat] = useState(0);
+  const [warehouseLng, setWarehouseLng] = useState(0);
+  const [storeAddr, setStoreAddr] = useState('');
+  const [radiusKm, setRadiusKm] = useState(3);
+  const [detectingGPS, setDetectingGPS] = useState(false);
 
   // Admin Route Protection
   useEffect(() => {
@@ -69,6 +78,13 @@ export default function AdminSettingsPage() {
           } else if (data.isOpen !== undefined) {
             setIsOpen(data.isOpen);
           }
+
+          // Load delivery zone
+          const dz = data.deliveryZone || {};
+          if (dz.center?.lat) setWarehouseLat(dz.center.lat);
+          if (dz.center?.lng) setWarehouseLng(dz.center.lng);
+          if (dz.radiusKm) setRadiusKm(dz.radiusKm);
+          if (data.storeAddress) setStoreAddr(data.storeAddress);
         })
         .catch((err) => {
           console.error('Failed to load settings:', err);
@@ -126,6 +142,15 @@ export default function AdminSettingsPage() {
         close: closeTime,
         isOpen,
       },
+      deliveryZone: {
+        type: 'radius',
+        center: {
+          lat: Number(warehouseLat) || 0,
+          lng: Number(warehouseLng) || 0,
+        },
+        radiusKm: Number(radiusKm) || 3,
+      },
+      storeAddress: storeAddr.trim(),
     };
 
     try {
@@ -136,6 +161,22 @@ export default function AdminSettingsPage() {
       showToast('Error saving settings. Please try again.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDetectWarehouse = async () => {
+    setDetectingGPS(true);
+    try {
+      const pos = await getCurrentPosition();
+      setWarehouseLat(pos.lat);
+      setWarehouseLng(pos.lng);
+      const geo = await reverseGeocode(pos.lat, pos.lng);
+      if (geo.formatted) setStoreAddr(geo.formatted);
+      showToast('Warehouse location detected!');
+    } catch (err) {
+      showToast(err.message || 'Failed to detect location');
+    } finally {
+      setDetectingGPS(false);
     }
   };
 
@@ -302,6 +343,107 @@ export default function AdminSettingsPage() {
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Warehouse Location & Delivery Zone */}
+            <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm space-y-4">
+              <h3 className="text-sm font-bold text-gray-900 flex items-center space-x-2">
+                <MapPinIcon className="w-4 h-4 text-[#0C831F]" />
+                <span>Warehouse Location & Delivery Zone</span>
+              </h3>
+              <p className="text-xs text-gray-500">
+                Set your store/warehouse GPS coordinates and delivery radius.
+              </p>
+
+              {/* Detect Location Button */}
+              <button
+                type="button"
+                onClick={handleDetectWarehouse}
+                disabled={detectingGPS}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-green-50 border-2 border-dashed border-[#0C831F] text-[#0C831F] rounded-xl text-xs font-bold hover:bg-green-100 transition disabled:opacity-50 cursor-pointer"
+              >
+                <Target className={`w-4 h-4 ${detectingGPS ? 'animate-spin' : ''}`} />
+                <span>{detectingGPS ? 'Detecting...' : 'Set to Current Shop Location (GPS)'}</span>
+              </button>
+
+              {/* Lat/Lng Inputs */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Latitude</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={warehouseLat}
+                    onChange={(e) => setWarehouseLat(e.target.value)}
+                    className="w-full text-sm px-3 py-2 rounded-xl border border-gray-300 focus:outline-none focus:border-[#0C831F]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Longitude</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={warehouseLng}
+                    onChange={(e) => setWarehouseLng(e.target.value)}
+                    className="w-full text-sm px-3 py-2 rounded-xl border border-gray-300 focus:outline-none focus:border-[#0C831F]"
+                  />
+                </div>
+              </div>
+
+              {/* Store Address */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Store Address</label>
+                <input
+                  type="text"
+                  value={storeAddr}
+                  onChange={(e) => setStoreAddr(e.target.value)}
+                  placeholder="e.g. Shop #12, Main Road, Koramangala"
+                  className="w-full text-sm px-3 py-2 rounded-xl border border-gray-300 focus:outline-none focus:border-[#0C831F]"
+                />
+              </div>
+
+              {/* Radius Selector */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-2">Delivery Radius</label>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {[1, 2, 3, 5, 10].map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setRadiusKm(r)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-bold border transition cursor-pointer ${
+                        Number(radiusKm) === r
+                          ? 'bg-[#0C831F] text-white border-[#0C831F]'
+                          : 'bg-white text-gray-700 border-gray-300 hover:border-[#0C831F]'
+                      }`}
+                    >
+                      {r} km
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="15"
+                  step="0.5"
+                  value={radiusKm}
+                  onChange={(e) => setRadiusKm(parseFloat(e.target.value))}
+                  className="w-full accent-[#0C831F]"
+                />
+                <p className="text-xs text-gray-500 text-center mt-1">
+                  Current: <strong>{radiusKm} km</strong>
+                </p>
+              </div>
+
+              {/* Preview Info */}
+              {Number(warehouseLat) !== 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-800">
+                  <p className="font-bold">✓ Warehouse Location Set</p>
+                  <p className="text-[11px] text-green-700 mt-0.5">
+                    {Number(warehouseLat).toFixed(6)}, {Number(warehouseLng).toFixed(6)} — Delivering within {radiusKm} km
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Admin Phone Numbers Tag List */}

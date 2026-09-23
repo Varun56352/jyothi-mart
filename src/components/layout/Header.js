@@ -17,11 +17,15 @@ import {
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
+import { useLocation } from '@/context/LocationContext';
+import LocationPickerModal from '@/components/common/LocationPickerModal';
 
 export default function Header() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { user, isAdmin, logout } = useAuth();
   const router = useRouter();
+  const [locationPickerOpen, setLocationPickerOpen] = useState(false);
+  const { address, deliveryTimeEstimate, isServiceable, loadingLocation } = useLocation();
 
   const handleLogout = () => {
     logout();
@@ -43,17 +47,26 @@ export default function Header() {
               <Menu className="w-5 h-5 text-gray-800" />
             </button>
 
-            <div className="flex items-center space-x-1.5">
-              <MapPin className="text-[#0C831F] w-5 h-5 flex-shrink-0" />
-              <div className="flex flex-col">
+            <button
+              onClick={() => setLocationPickerOpen(true)}
+              className="flex items-center space-x-1.5 cursor-pointer hover:opacity-80 transition"
+            >
+              <MapPin className={`w-5 h-5 flex-shrink-0 ${isServiceable ? 'text-[#0C831F]' : 'text-red-500'}`} />
+              <div className="flex flex-col text-left">
                 <span className="text-[11px] font-extrabold text-gray-900 leading-tight">
-                  Delivery in 10 mins
+                  {loadingLocation
+                    ? 'Detecting...'
+                    : isServiceable
+                    ? deliveryTimeEstimate
+                      ? `Delivery in ${deliveryTimeEstimate}`
+                      : 'Delivery in 10 mins'
+                    : 'Not Serviceable'}
                 </span>
                 <span className="text-[11px] text-gray-500 truncate max-w-[150px] sm:max-w-[220px]">
-                  Koramangala, Bangalore...
+                  {address || 'Select location...'}
                 </span>
               </div>
-            </div>
+            </button>
           </div>
 
           {/* Center: Brand Name */}
@@ -248,6 +261,10 @@ export default function Header() {
           </div>
         </div>
       )}
+      <LocationPickerModal
+        isOpen={locationPickerOpen}
+        onClose={() => setLocationPickerOpen(false)}
+      />
     </>
   );
 }
