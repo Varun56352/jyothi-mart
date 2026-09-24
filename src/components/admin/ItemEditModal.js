@@ -70,8 +70,6 @@ export default function ItemEditModal({ item, isOpen, onClose, onSaveSuccess }) 
     }
   }, [item]);
 
-  if (!isOpen || !item) return null;
-
   // Image Upload Handlers
   const handleFiles = async (files) => {
     if (!files || files.length === 0) return;
@@ -304,6 +302,8 @@ export default function ItemEditModal({ item, isOpen, onClose, onSaveSuccess }) 
       setSaving(false);
     }
   };
+
+  if (!isOpen || !item) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs">

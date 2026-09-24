@@ -267,12 +267,14 @@ export default function AdminItemsManager({ compact = false, onItemUpdated }) {
       </div>
 
       {/* Comprehensive Edit Item Modal */}
-      <ItemEditModal
-        item={editingItem}
-        isOpen={!!editingItem}
-        onClose={() => setEditingItem(null)}
-        onSaveSuccess={handleItemSaved}
-      />
+      {editingItem && (
+        <ItemEditModal
+          item={editingItem}
+          isOpen={!!editingItem}
+          onClose={() => setEditingItem(null)}
+          onSaveSuccess={handleItemSaved}
+        />
+      )}
     </div>
   );
 }

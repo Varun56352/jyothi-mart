@@ -46,8 +46,6 @@ const CARD2_ICONS = [
 ];
 
 export default function BannerEditModal({ banner, isOpen, onClose, onSave }) {
-  if (!isOpen || !banner) return null;
-
   const [form, setForm] = useState({
     id: banner.id || `banner-${Date.now()}`,
     type: banner.type || 'zepto_style',
@@ -182,6 +180,8 @@ export default function BannerEditModal({ banner, isOpen, onClose, onSave }) {
     onSave(form);
     onClose();
   };
+
+  if (!isOpen || !banner) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">

@@ -820,15 +820,17 @@ export default function AdminSettingsPage() {
         )}
 
         {/* Banner Edit Modal */}
-        <BannerEditModal
-          isOpen={isBannerModalOpen}
-          banner={editingBanner}
-          onClose={() => {
-            setIsBannerModalOpen(false);
-            setEditingBanner(null);
-          }}
-          onSave={handleSaveBanner}
-        />
+        {isBannerModalOpen && editingBanner && (
+          <BannerEditModal
+            isOpen={isBannerModalOpen}
+            banner={editingBanner}
+            onClose={() => {
+              setIsBannerModalOpen(false);
+              setEditingBanner(null);
+            }}
+            onSave={handleSaveBanner}
+          />
+        )}
       </main>
     </div>
   );
