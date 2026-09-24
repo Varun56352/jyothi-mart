@@ -1,22 +1,24 @@
 'use client';
 import { useEffect, useState } from 'react';
 import ProductGrid from '@/components/home/ProductGrid';
-import { getCatalog, getCategories } from '@/lib/api';
-import { Sparkles, ShoppingBag } from 'lucide-react';
+import HeroBannerCarousel, { DEFAULT_HERO_BANNERS } from '@/components/home/HeroBannerCarousel';
+import { getCatalog, getCategories, getStoreInfo } from '@/lib/api';
 
 export default function Home() {
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [heroBanners, setHeroBanners] = useState(DEFAULT_HERO_BANNERS);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadData() {
       setLoading(true);
       try {
-        const [catRes, prodRes] = await Promise.all([
+        const [catRes, prodRes, infoRes] = await Promise.all([
           getCategories().catch(() => ({ data: [] })),
           getCatalog(selectedCategory === 'all' ? {} : { category: selectedCategory }),
+          getStoreInfo().catch(() => ({ data: {} })),
         ]);
 
         const rawCats = catRes.data?.data || catRes.data || [];
@@ -24,6 +26,13 @@ export default function Home() {
 
         const rawItems = prodRes.data?.data || prodRes.data?.items || prodRes.data || [];
         setItems(Array.isArray(rawItems) ? rawItems : []);
+
+        // Load dynamic hero banners configured in Store Settings
+        const storeData = infoRes.data?.data || infoRes.data || {};
+        const banners = storeData.heroBanners || prodRes.data?.heroBanners;
+        if (Array.isArray(banners) && banners.length > 0) {
+          setHeroBanners(banners);
+        }
       } catch (err) {
         console.error('Failed to load catalog:', err);
       } finally {
@@ -35,30 +44,8 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-28">
-      {/* Hero Banner */}
-      <div className="bg-gradient-to-r from-[#0C831F] via-[#10A328] to-[#0C831F] text-white px-4 py-6 md:px-8 md:py-8 shadow-sm">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-xs text-xs font-semibold px-2.5 py-1 rounded-full mb-2">
-              <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
-              <span>Instant Quick Delivery</span>
-            </div>
-            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">
-              Jyothi Mart Quick Commerce
-            </h1>
-            <p className="text-sm md:text-base text-green-100 mt-1">
-              Fresh groceries & staples delivered straight from our store in minutes.
-            </p>
-          </div>
-          <div className="hidden md:flex items-center gap-3 bg-white/10 backdrop-blur-xs border border-white/20 p-4 rounded-2xl">
-            <ShoppingBag className="w-8 h-8 text-yellow-300" />
-            <div>
-              <div className="text-xs text-green-100">Live Inventory</div>
-              <div className="text-lg font-bold">{items.length} Products Online</div>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Dynamic Cover Carousel (Zepto, Amazon, Prime Video, Netflix style) */}
+      <HeroBannerCarousel banners={heroBanners} />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-5">
         {/* Category Pills Bar */}

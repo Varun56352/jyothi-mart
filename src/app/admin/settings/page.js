@@ -14,12 +14,19 @@ import {
   Check,
   AlertCircle,
   IndianRupee,
-  MapPin as MapPinIcon, Navigation, Target
+  MapPin as MapPinIcon, Navigation, Target,
+  Layers,
+  Edit3,
+  Trash2,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { getCurrentPosition, reverseGeocode } from '@/lib/geoUtils';
 import { useAuth } from '@/context/AuthContext';
 import { getAdminSettings, updateAdminSettings } from '@/lib/api';
 import { SkeletonText } from '@/components/common/Skeleton';
+import BannerEditModal from '@/components/admin/BannerEditModal';
+import { DEFAULT_HERO_BANNERS } from '@/components/home/HeroBannerCarousel';
 import dynamic from 'next/dynamic';
 
 const GoogleMapPicker = dynamic(() => import('@/components/common/GoogleMapPicker'), {
@@ -51,6 +58,11 @@ export default function AdminSettingsPage() {
   const [closeTime, setCloseTime] = useState('22:00');
   const [isOpen, setIsOpen] = useState(true);
 
+  // Hero Cover Banners State
+  const [heroBanners, setHeroBanners] = useState(DEFAULT_HERO_BANNERS);
+  const [editingBanner, setEditingBanner] = useState(null);
+  const [isBannerModalOpen, setIsBannerModalOpen] = useState(false);
+
   // Delivery Zone State
   const [warehouseLat, setWarehouseLat] = useState(0);
   const [warehouseLng, setWarehouseLng] = useState(0);
@@ -79,6 +91,10 @@ export default function AdminSettingsPage() {
           if (Array.isArray(data.deliveryPhones)) setDeliveryPhones(data.deliveryPhones);
           if (data.deliveryFee !== undefined) setDeliveryFee(data.deliveryFee);
           if (data.minOrderAmount !== undefined) setMinOrderAmount(data.minOrderAmount);
+
+          if (Array.isArray(data.heroBanners) && data.heroBanners.length > 0) {
+            setHeroBanners(data.heroBanners);
+          }
 
           const timings = data.storeTimings || {};
           if (timings.open) setOpenTime(timings.open);
@@ -136,6 +152,74 @@ export default function AdminSettingsPage() {
     setDeliveryPhones(deliveryPhones.filter((p) => p !== phone));
   };
 
+  // Hero Banner Handlers
+  const handleOpenEditBanner = (b) => {
+    setEditingBanner(b);
+    setIsBannerModalOpen(true);
+  };
+
+  const handleAddNewBanner = () => {
+    const newSlide = {
+      id: `banner-${Date.now()}`,
+      type: 'zepto_style',
+      active: true,
+      title: 'ALL NEW ZEPTO EXPERIENCE',
+      subtitle: '',
+      card1Text: '₹0 FEES',
+      card1Icon: 'bag',
+      card2Text: 'EVERYDAY LOW PRICES*',
+      card2Icon: 'price_down',
+      features: ['₹0 Handling Fee', '₹0 Delivery Fee*', '₹0 Rain & Surge Fee'],
+      termsText: '*T&C Apply. Above specific minimum order value',
+      badgeText: 'Zero Extra Charges',
+      bgTheme: 'purple',
+      imageUrl: '',
+      linkUrl: '',
+    };
+    setEditingBanner(newSlide);
+    setIsBannerModalOpen(true);
+  };
+
+  const handleSaveBanner = (updated) => {
+    setHeroBanners((prev) => {
+      const idx = prev.findIndex((b) => b.id === updated.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = updated;
+        return copy;
+      }
+      return [...prev, updated];
+    });
+    showToast('Banner slide updated! Click Save All Settings to publish.');
+  };
+
+  const handleToggleBannerActive = (id) => {
+    setHeroBanners((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, active: b.active === false ? true : false } : b))
+    );
+  };
+
+  const handleDeleteBanner = (id) => {
+    if (heroBanners.length <= 1) {
+      showToast('You must keep at least 1 banner in the carousel');
+      return;
+    }
+    setHeroBanners((prev) => prev.filter((b) => b.id !== id));
+    showToast('Banner slide removed');
+  };
+
+  const handleMoveBanner = (index, dir) => {
+    const targetIdx = index + dir;
+    if (targetIdx < 0 || targetIdx >= heroBanners.length) return;
+    setHeroBanners((prev) => {
+      const copy = [...prev];
+      const temp = copy[index];
+      copy[index] = copy[targetIdx];
+      copy[targetIdx] = temp;
+      return copy;
+    });
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -161,6 +245,7 @@ export default function AdminSettingsPage() {
         radiusKm: Number(radiusKm) || 3,
       },
       storeAddress: storeAddr.trim(),
+      heroBanners,
     };
 
     try {
@@ -352,6 +437,144 @@ export default function AdminSettingsPage() {
                     className="w-full text-sm px-3 py-2 rounded-xl border border-gray-300 focus:outline-none focus:border-[#0C831F]"
                   />
                 </div>
+              </div>
+            </div>
+
+            {/* Homepage Hero Cover Banners (Carousel) */}
+            <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-gray-100 pb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 flex items-center space-x-2">
+                    <Layers className="w-4 h-4 text-[#0C831F]" />
+                    <span>Homepage Cover Banners (Carousel)</span>
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Customize the slides shown on your homepage cover (Zepto, Amazon & Netflix style).
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddNewBanner}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-50 hover:bg-green-100 text-[#0C831F] border border-green-200 rounded-xl text-xs font-bold transition cursor-pointer self-start sm:self-auto"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add New Slide</span>
+                </button>
+              </div>
+
+              {/* Banner Slides List */}
+              <div className="space-y-2.5">
+                {heroBanners.map((banner, idx) => {
+                  const isActive = banner.active !== false;
+                  return (
+                    <div
+                      key={banner.id || idx}
+                      className={`p-3.5 rounded-2xl border transition-all ${
+                        isActive
+                          ? 'bg-gray-50/80 border-gray-200 hover:border-gray-300'
+                          : 'bg-gray-100/60 border-gray-200 opacity-60'
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-start sm:items-center space-x-3 flex-1 min-w-0">
+                          {/* Slide Number Badge */}
+                          <div className="w-7 h-7 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-xs font-black text-gray-700 shadow-2xs flex-shrink-0">
+                            #{idx + 1}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-bold text-gray-900 truncate">
+                                {banner.title || 'Untitled Banner'}
+                              </span>
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${
+                                  banner.bgTheme === 'purple'
+                                    ? 'bg-purple-100 text-purple-800'
+                                    : banner.bgTheme === 'green'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : banner.bgTheme === 'orange'
+                                    ? 'bg-orange-100 text-orange-800'
+                                    : banner.bgTheme === 'blue'
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : 'bg-gray-800 text-white'
+                                }`}
+                              >
+                                {banner.bgTheme || 'purple'}
+                              </span>
+                              {!isActive && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">
+                                  Hidden
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5 truncate">
+                              <span>Card 1: <strong>{banner.card1Text || '₹0 FEES'}</strong></span>
+                              <span>•</span>
+                              <span>Card 2: <strong>{banner.card2Text || 'EVERYDAY LOW PRICES*'}</strong></span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Slide Action Controls */}
+                        <div className="flex items-center space-x-1.5 self-end sm:self-auto flex-shrink-0">
+                          {/* Active Toggle */}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleBannerActive(banner.id)}
+                            title={isActive ? 'Hide slide from homepage' : 'Show slide on homepage'}
+                            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                              isActive
+                                ? 'bg-green-50 text-[#0C831F] border-green-200 hover:bg-green-100'
+                                : 'bg-gray-200 text-gray-600 border-gray-300 hover:bg-gray-300'
+                            }`}
+                          >
+                            {isActive ? 'Active' : 'Off'}
+                          </button>
+
+                          {/* Reorder Up / Down */}
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={() => handleMoveBanner(idx, -1)}
+                            className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-500 disabled:opacity-30 cursor-pointer"
+                            title="Move up"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === heroBanners.length - 1}
+                            onClick={() => handleMoveBanner(idx, 1)}
+                            className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-500 disabled:opacity-30 cursor-pointer"
+                            title="Move down"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Edit Dialog Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditBanner(banner)}
+                            className="px-2.5 py-1.5 bg-white hover:bg-gray-100 text-gray-700 border border-gray-200 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                          >
+                            <Edit3 className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Edit Dialogs</span>
+                          </button>
+
+                          {/* Delete Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteBanner(banner.id)}
+                            className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition cursor-pointer"
+                            title="Delete slide"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -595,6 +818,17 @@ export default function AdminSettingsPage() {
             </div>
           </form>
         )}
+
+        {/* Banner Edit Modal */}
+        <BannerEditModal
+          isOpen={isBannerModalOpen}
+          banner={editingBanner}
+          onClose={() => {
+            setIsBannerModalOpen(false);
+            setEditingBanner(null);
+          }}
+          onSave={handleSaveBanner}
+        />
       </main>
     </div>
   );
