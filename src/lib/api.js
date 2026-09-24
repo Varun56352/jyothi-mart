@@ -19,7 +19,9 @@ export const verifyOtp = (phone, otp, firebaseToken, firebaseUid) =>
   api.post('/auth/verify-otp', { phone, otp, firebaseToken, firebaseUid });
 export const getStoreInfo = () => api.get('/info');
 export const getCatalog = (params) => api.get('/catalog', { params });
-export const getCategories = () => api.get('/catalog/categories').catch(() => api.get('/categories'));
+export const getCategories = () => api.get('/categories').catch(() => api.get('/catalog/categories'));
+export const getSubcategories = (categoryId) =>
+  api.get('/subcategories', { params: categoryId ? { category: categoryId } : {} });
 export const validateCart = (items) => api.post('/cart/validate', { items });
 export const placeOrder = (orderData) => api.post('/orders', orderData);
 export const getMyOrders = () => api.get('/orders/my').catch(() => api.get('/orders/me'));
@@ -35,6 +37,18 @@ export const getAdminSettings = () => api.get('/admin/settings');
 export const updateAdminSettings = (data) => api.put('/admin/settings', data);
 export const getAdminUsers = () => api.get('/admin/users');
 export const updateAdminUser = (id, data) => api.put(`/admin/users/${id}`, data);
+
+// Admin Category & Subcategory API
+export const getAdminCategories = () => api.get('/admin/categories');
+export const createAdminCategory = (data) => api.post('/admin/categories', data);
+export const updateAdminCategory = (id, data) => api.put(`/admin/categories/${id}`, data);
+export const deleteAdminCategory = (id) => api.delete(`/admin/categories/${id}`);
+
+export const getAdminSubcategories = (categoryId) =>
+  api.get('/admin/subcategories', { params: categoryId ? { category: categoryId } : {} });
+export const createAdminSubcategory = (data) => api.post('/admin/subcategories', data);
+export const updateAdminSubcategory = (id, data) => api.put(`/admin/subcategories/${id}`, data);
+export const deleteAdminSubcategory = (id) => api.delete(`/admin/subcategories/${id}`);
 
 // Delivery API
 export const getDeliveryOrders = (params) => api.get('/delivery/orders', { params });

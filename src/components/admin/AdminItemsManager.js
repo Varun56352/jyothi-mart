@@ -76,6 +76,8 @@ export default function AdminItemsManager({ compact = false, onItemUpdated }) {
           i.name?.toLowerCase().includes(q) ||
           i.displayName?.toLowerCase().includes(q) ||
           i.originalName?.toLowerCase().includes(q) ||
+          i.categoryName?.toLowerCase().includes(q) ||
+          i.subcategoryName?.toLowerCase().includes(q) ||
           i.group?.toLowerCase().includes(q)
       );
     }
@@ -209,6 +211,16 @@ export default function AdminItemsManager({ compact = false, onItemUpdated }) {
                       >
                         {isVisible ? 'Online' : 'Hidden'}
                       </span>
+                      {item.categoryName ? (
+                        <span className="inline-flex items-center gap-1 text-[9px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
+                          <span>{item.categoryName}</span>
+                          {item.subcategoryName && <span className="text-purple-400">› {item.subcategoryName}</span>}
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                          Needs Category
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2 mt-1 text-[11px] flex-wrap">

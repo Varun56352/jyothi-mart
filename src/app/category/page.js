@@ -79,10 +79,12 @@ export default function CategoriesPage() {
                   className="group bg-white rounded-2xl p-4 border border-gray-200 hover:border-[#0C831F] hover:shadow-md transition flex flex-col justify-between h-36"
                 >
                   <div className="flex items-start justify-between">
-                    <div
-                      className={`w-11 h-11 rounded-xl flex items-center justify-center font-bold text-base border ${colorClass}`}
-                    >
-                      {cat.name.charAt(0).toUpperCase()}
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-base bg-[#F4F6FB] border border-gray-100 overflow-hidden p-1">
+                      {cat.image ? (
+                        <img src={cat.image} alt={cat.name} className="w-full h-full object-contain" />
+                      ) : (
+                        <span className="text-[#0C831F] font-bold">{cat.name.charAt(0).toUpperCase()}</span>
+                      )}
                     </div>
                     <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-[#0C831F] group-hover:translate-x-0.5 transition" />
                   </div>

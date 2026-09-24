@@ -16,12 +16,15 @@ import {
   Menu,
   X,
   Settings,
+  FolderTree,
+  Layers,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getAdminOrders, getAdminItems, getAdminUsers } from '@/lib/api';
 import AdminOrdersManager from '@/components/admin/AdminOrdersManager';
 import AdminItemsManager from '@/components/admin/AdminItemsManager';
 import AdminUsersManager from '@/components/admin/AdminUsersManager';
+import AdminCategoriesManager from '@/components/admin/AdminCategoriesManager';
 
 export default function AdminPage() {
   const { user, isAdmin, logout, loading: authLoading } = useAuth();
@@ -92,6 +95,7 @@ export default function AdminPage() {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'orders', label: 'Manage Orders', icon: Package, badge: stats.liveOrders > 0 ? stats.liveOrders : null },
+    { id: 'categories', label: 'Categories & Subcategories', icon: FolderTree },
     { id: 'items', label: 'Edit Items', icon: ShoppingBag },
     { id: 'users', label: 'Manage Users', icon: Users },
     { id: 'settings', label: 'Store & Delivery Settings', icon: Settings, href: '/admin/settings' },
@@ -263,8 +267,8 @@ export default function AdminPage() {
                 </p>
               </div>
 
-              {/* 4 Main Action Cards: Manage Orders, Edit Items, Manage Users, Store Settings */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* 5 Main Action Cards: Orders, Categories, Items, Users, Settings */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* 1. Manage Orders Card */}
                 <div
                   onClick={() => setActiveSection('orders')}
@@ -293,7 +297,32 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* 2. Edit Items Card */}
+                {/* 2. Categories & Subcategories Card (Zepto Style) */}
+                <div
+                  onClick={() => setActiveSection('categories')}
+                  className="bg-white rounded-3xl p-6 border border-gray-200 shadow-2xs hover:shadow-md hover:border-[#0C831F] transition cursor-pointer flex flex-col justify-between group"
+                >
+                  <div>
+                    <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-700 border border-purple-200 flex items-center justify-center mb-4 group-hover:scale-105 transition">
+                      <FolderTree className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-base font-extrabold text-gray-900 group-hover:text-[#0C831F] transition">
+                      Categories & Subcategories
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Create homepage category cards, upload images, and configure subcategory lists.
+                    </p>
+                  </div>
+
+                  <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between">
+                    <span className="text-xs font-bold text-gray-500">Zepto Homepage Cover</span>
+                    <span className="text-xs font-bold text-[#0C831F] group-hover:translate-x-1 transition flex items-center gap-1">
+                      Manage Categories →
+                    </span>
+                  </div>
+                </div>
+
+                {/* 3. Edit Items Card */}
                 <div
                   onClick={() => setActiveSection('items')}
                   className="bg-white rounded-3xl p-6 border border-gray-200 shadow-2xs hover:shadow-md hover:border-[#0C831F] transition cursor-pointer flex flex-col justify-between group"
@@ -385,14 +414,21 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* Section 3: Edit Items (Catalog & Photos) */}
+        {/* Section 3: Categories & Subcategories Manager */}
+        {activeSection === 'categories' && (
+          <div className="flex-1 bg-white overflow-hidden flex flex-col">
+            <AdminCategoriesManager />
+          </div>
+        )}
+
+        {/* Section 4: Edit Items (Catalog & Photos) */}
         {activeSection === 'items' && (
           <div className="flex-1 bg-white overflow-hidden flex flex-col">
             <AdminItemsManager />
           </div>
         )}
 
-        {/* Section 4: Manage Users */}
+        {/* Section 5: Manage Users */}
         {activeSection === 'users' && (
           <div className="flex-1 bg-white overflow-hidden flex flex-col">
             <AdminUsersManager />

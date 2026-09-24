@@ -13,14 +13,19 @@ import {
   Sparkles,
   Percent,
   Check,
+  Layers,
 } from 'lucide-react';
 import { compressImage } from '@/lib/imageUtils';
-import { updateAdminItem } from '@/lib/api';
+import { updateAdminItem, getAdminCategories, getAdminSubcategories } from '@/lib/api';
 
 export default function ItemEditModal({ item, isOpen, onClose, onSaveSuccess }) {
   const [visible, setVisible] = useState(true);
   const [images, setImages] = useState([]);
   const [displayName, setDisplayName] = useState('');
+  const [categories, setCategories] = useState([]);
+  const [allSubcategories, setAllSubcategories] = useState([]);
+  const [categoryId, setCategoryId] = useState('');
+  const [subcategoryId, setSubcategoryId] = useState('');
   const [itemType, setItemType] = useState('packed'); // 'packed' | 'loose'
   const [mrp, setMrp] = useState('');
   const [customPrice, setCustomPrice] = useState('');
@@ -32,10 +37,26 @@ export default function ItemEditModal({ item, isOpen, onClose, onSaveSuccess }) 
   const fileInputRef = useRef(null);
 
   useEffect(() => {
+    if (isOpen) {
+      Promise.all([
+        getAdminCategories().catch(() => ({ data: [] })),
+        getAdminSubcategories().catch(() => ({ data: [] })),
+      ]).then(([catRes, subRes]) => {
+        const cats = catRes.data?.data || catRes.data || [];
+        const subs = subRes.data?.data || subRes.data || [];
+        setCategories(cats);
+        setAllSubcategories(subs);
+      });
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
     if (item) {
       setVisible(item.visible !== false);
       setImages(Array.isArray(item.images) ? [...item.images] : []);
       setDisplayName(item.displayName || '');
+      setCategoryId(item.categoryId ? String(item.categoryId) : '');
+      setSubcategoryId(item.subcategoryId ? String(item.subcategoryId) : '');
       setItemType(item.itemType || (item.packageOnly ? 'packed' : 'loose'));
       setMrp(item.mrp !== null && item.mrp !== undefined ? String(item.mrp) : '');
       setCustomPrice(
@@ -124,6 +145,16 @@ export default function ItemEditModal({ item, isOpen, onClose, onSaveSuccess }) 
   const handleSave = async () => {
     setError('');
 
+    // Rule: Category & Subcategory are strictly mandatory
+    if (!categoryId) {
+      setError('Category is mandatory. Please select a category for this item.');
+      return;
+    }
+    if (!subcategoryId) {
+      setError('Subcategory is mandatory. Please select a subcategory for this item.');
+      return;
+    }
+
     // Rule: For packed items, MRP is mandatory
     if (itemType === 'packed') {
       if (!mrp || Number(mrp) <= 0) {
@@ -151,10 +182,17 @@ export default function ItemEditModal({ item, isOpen, onClose, onSaveSuccess }) 
 
     setSaving(true);
     try {
+      const selectedCat = categories.find((c) => String(c._id) === String(categoryId));
+      const selectedSub = allSubcategories.find((s) => String(s._id) === String(subcategoryId));
+
       const payload = {
         visible,
         images,
         displayName: displayName.trim(),
+        categoryId,
+        categoryName: selectedCat?.name || item.categoryName || '',
+        subcategoryId,
+        subcategoryName: selectedSub?.name || item.subcategoryName || '',
         itemType,
         mrp: mrp ? Number(mrp) : null,
         customPrice: customPrice ? Number(customPrice) : null,
@@ -331,6 +369,71 @@ export default function ItemEditModal({ item, isOpen, onClose, onSaveSuccess }) 
             />
             <p className="text-[11px] text-gray-400 mt-1">
               Leave blank to automatically use: <strong>"{item.originalName || item.name}"</strong>
+            </p>
+          </div>
+
+          {/* 4. Category & Subcategory Selection (Mandatory) */}
+          <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-extrabold text-[#0C831F] uppercase tracking-wider flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5" />
+                <span>Category & Subcategory (Mandatory)</span>
+              </label>
+              <span className="text-[10px] bg-[#0C831F] text-white font-bold px-2 py-0.5 rounded-full">
+                Required for Storefront
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Category Select */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                  Main Category <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={categoryId}
+                  onChange={(e) => {
+                    setCategoryId(e.target.value);
+                    setSubcategoryId('');
+                  }}
+                  className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2 text-xs font-semibold text-gray-900 focus:outline-none focus:border-[#0C831F]"
+                >
+                  <option value="">-- Select Main Category --</option>
+                  {categories.map((cat) => (
+                    <option key={cat._id} value={cat._id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Subcategory Select */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                  Subcategory <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={subcategoryId}
+                  onChange={(e) => setSubcategoryId(e.target.value)}
+                  disabled={!categoryId}
+                  className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2 text-xs font-semibold text-gray-900 focus:outline-none focus:border-[#0C831F] disabled:opacity-50 disabled:bg-gray-100"
+                >
+                  <option value="">
+                    {!categoryId ? '-- Select Category First --' : '-- Select Subcategory --'}
+                  </option>
+                  {allSubcategories
+                    .filter((sub) => String(sub.category?._id || sub.category) === String(categoryId))
+                    .map((sub) => (
+                      <option key={sub._id} value={sub._id}>
+                        {sub.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-gray-500">
+              Assigning both ensures this item is placed in the right department on the website.
             </p>
           </div>
 
