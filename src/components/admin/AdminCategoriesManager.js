@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Layers,
   Plus,
@@ -8,6 +8,7 @@ import {
   RefreshCw,
   Search,
   Upload,
+  ClipboardPaste,
   Image as ImageIcon,
   FolderTree,
   ChevronRight,
@@ -515,6 +516,81 @@ function CategoryModal({ isOpen, category, onClose, onSaved }) {
     }
   };
 
+  // Clipboard Paste Handler (Ctrl+V)
+  const handlePaste = useCallback(
+    async (e) => {
+      const clipboardData = e.clipboardData || window.clipboardData;
+      if (!clipboardData) return;
+
+      const items = clipboardData.items;
+      if (!items || items.length === 0) return;
+
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.type && it.type.startsWith('image/')) {
+          const file = it.getAsFile();
+          if (file) {
+            e.preventDefault();
+            setCompressing(true);
+            setError('');
+            try {
+              const dataUrl = await compressImage(file, { maxWidth: 600, maxHeight: 600, quality: 0.85 });
+              setImage(dataUrl);
+            } catch (err) {
+              setError(err.message || 'Failed to compress pasted photo');
+            } finally {
+              setCompressing(false);
+            }
+            return;
+          }
+        }
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onWindowPaste = (e) => handlePaste(e);
+    window.addEventListener('paste', onWindowPaste);
+    return () => window.removeEventListener('paste', onWindowPaste);
+  }, [isOpen, handlePaste]);
+
+  const handlePasteFromClipboard = async () => {
+    setError('');
+    try {
+      if (navigator.clipboard?.read) {
+        const clipboardItems = await navigator.clipboard.read();
+        for (const cItem of clipboardItems) {
+          for (const type of cItem.types) {
+            if (type.startsWith('image/')) {
+              const blob = await cItem.getType(type);
+              const file = new File([blob], `pasted-${Date.now()}.${type.split('/')[1] || 'png'}`, { type });
+              setCompressing(true);
+              const dataUrl = await compressImage(file, { maxWidth: 600, maxHeight: 600, quality: 0.85 });
+              setImage(dataUrl);
+              setCompressing(false);
+              return;
+            }
+          }
+        }
+      }
+
+      // Check text URL
+      const text = await navigator.clipboard?.readText();
+      if (text && (text.startsWith('http://') || text.startsWith('https://') || text.startsWith('data:image/'))) {
+        setImage(text.trim());
+      } else {
+        setError('No copied image found in clipboard. Please copy a photo first, then click Paste or press Ctrl+V.');
+      }
+    } catch (err) {
+      console.warn('Clipboard read error:', err);
+      setError('Please click inside this modal and press Ctrl+V on your keyboard to paste.');
+    } finally {
+      setCompressing(false);
+    }
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -606,24 +682,37 @@ function CategoryModal({ isOpen, category, onClose, onSaved }) {
                   onChange={handleFileChange}
                   className="hidden"
                 />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={compressing}
-                  className="w-full px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  {compressing ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Optimizing...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Upload Photo from Device</span>
-                    </>
-                  )}
-                </button>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={compressing}
+                    className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    {compressing ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Wait...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Upload Photo</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handlePasteFromClipboard}
+                    disabled={compressing}
+                    className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-[#0C831F] border border-emerald-200 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
+                    title="Paste copied photo or press Ctrl+V"
+                  >
+                    <ClipboardPaste className="w-3.5 h-3.5" />
+                    <span>Paste (Ctrl+V)</span>
+                  </button>
+                </div>
                 <input
                   type="text"
                   placeholder="Or paste image URL..."
@@ -714,6 +803,80 @@ function SubcategoryModal({ isOpen, subcategory, categories, defaultCategoryId, 
       setImage(dataUrl);
     } catch (err) {
       setError(err.message || 'Failed to compress image');
+    } finally {
+      setCompressing(false);
+    }
+  };
+
+  const handlePaste = useCallback(
+    async (e) => {
+      const clipboardData = e.clipboardData || window.clipboardData;
+      if (!clipboardData) return;
+
+      const items = clipboardData.items;
+      if (!items || items.length === 0) return;
+
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.type && it.type.startsWith('image/')) {
+          const file = it.getAsFile();
+          if (file) {
+            e.preventDefault();
+            setCompressing(true);
+            setError('');
+            try {
+              const dataUrl = await compressImage(file, { maxWidth: 600, maxHeight: 600, quality: 0.85 });
+              setImage(dataUrl);
+            } catch (err) {
+              setError(err.message || 'Failed to compress pasted photo');
+            } finally {
+              setCompressing(false);
+            }
+            return;
+          }
+        }
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onWindowPaste = (e) => handlePaste(e);
+    window.addEventListener('paste', onWindowPaste);
+    return () => window.removeEventListener('paste', onWindowPaste);
+  }, [isOpen, handlePaste]);
+
+  const handlePasteFromClipboard = async () => {
+    setError('');
+    try {
+      if (navigator.clipboard?.read) {
+        const clipboardItems = await navigator.clipboard.read();
+        for (const cItem of clipboardItems) {
+          for (const type of cItem.types) {
+            if (type.startsWith('image/')) {
+              const blob = await cItem.getType(type);
+              const file = new File([blob], `pasted-${Date.now()}.${type.split('/')[1] || 'png'}`, { type });
+              setCompressing(true);
+              const dataUrl = await compressImage(file, { maxWidth: 600, maxHeight: 600, quality: 0.85 });
+              setImage(dataUrl);
+              setCompressing(false);
+              return;
+            }
+          }
+        }
+      }
+
+      // Check text URL
+      const text = await navigator.clipboard?.readText();
+      if (text && (text.startsWith('http://') || text.startsWith('https://') || text.startsWith('data:image/'))) {
+        setImage(text.trim());
+      } else {
+        setError('No copied image found in clipboard. Please copy a photo first, then click Paste or press Ctrl+V.');
+      }
+    } catch (err) {
+      console.warn('Clipboard read error:', err);
+      setError('Please click inside this modal and press Ctrl+V on your keyboard to paste.');
     } finally {
       setCompressing(false);
     }
@@ -835,24 +998,37 @@ function SubcategoryModal({ isOpen, subcategory, categories, defaultCategoryId, 
                   onChange={handleFileChange}
                   className="hidden"
                 />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={compressing}
-                  className="w-full px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  {compressing ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Optimizing...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Upload Photo from Device</span>
-                    </>
-                  )}
-                </button>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={compressing}
+                    className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    {compressing ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Wait...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Upload Photo</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handlePasteFromClipboard}
+                    disabled={compressing}
+                    className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-[#0C831F] border border-emerald-200 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
+                    title="Paste copied photo or press Ctrl+V"
+                  >
+                    <ClipboardPaste className="w-3.5 h-3.5" />
+                    <span>Paste (Ctrl+V)</span>
+                  </button>
+                </div>
                 <input
                   type="text"
                   placeholder="Or paste image URL..."

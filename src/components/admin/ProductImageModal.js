@@ -1,6 +1,6 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
-import { X, Upload, Trash2, Star, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { X, Upload, Trash2, Star, Image as ImageIcon, Loader2, ClipboardPaste } from 'lucide-react';
 import { compressImage } from '@/lib/imageUtils';
 import { updateAdminItem } from '@/lib/api';
 
@@ -17,8 +17,6 @@ export default function ProductImageModal({ item, isOpen, onClose, onSaveSuccess
       setError('');
     }
   }, [item]);
-
-  if (!isOpen || !item) return null;
 
   const handleFiles = async (files) => {
     if (!files || files.length === 0) return;
@@ -41,6 +39,81 @@ export default function ProductImageModal({ item, isOpen, onClose, onSaveSuccess
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
+
+  // Clipboard Paste Handlers (Ctrl+V and Paste Button)
+  const handlePaste = useCallback(
+    async (e) => {
+      const clipboardData = e.clipboardData || window.clipboardData;
+      if (!clipboardData) return;
+
+      const items = clipboardData.items;
+      if (!items || items.length === 0) return;
+
+      const imageFiles = [];
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.type && it.type.startsWith('image/')) {
+          const file = it.getAsFile();
+          if (file) imageFiles.push(file);
+        }
+      }
+
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        await handleFiles(imageFiles);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onWindowPaste = (e) => {
+      handlePaste(e);
+    };
+    window.addEventListener('paste', onWindowPaste);
+    return () => window.removeEventListener('paste', onWindowPaste);
+  }, [isOpen, handlePaste]);
+
+  const handlePasteFromClipboardButton = async () => {
+    setError('');
+    try {
+      if (navigator.clipboard?.read) {
+        const clipboardItems = await navigator.clipboard.read();
+        const imageFiles = [];
+        for (const cItem of clipboardItems) {
+          for (const type of cItem.types) {
+            if (type.startsWith('image/')) {
+              const blob = await cItem.getType(type);
+              const file = new File(
+                [blob],
+                `pasted-${Date.now()}.${type.split('/')[1] || 'png'}`,
+                { type }
+              );
+              imageFiles.push(file);
+            }
+          }
+        }
+        if (imageFiles.length > 0) {
+          await handleFiles(imageFiles);
+          return;
+        }
+      }
+
+      // Check if image URL in clipboard text
+      const text = await navigator.clipboard?.readText();
+      if (text && (text.startsWith('http://') || text.startsWith('https://') || text.startsWith('data:image/'))) {
+        setImages((prev) => [...prev, text.trim()]);
+      } else {
+        setError('No copied image found in clipboard. Please copy a photo first, then click Paste or press Ctrl+V.');
+      }
+    } catch (err) {
+      console.warn('Clipboard read error:', err);
+      setError('Please click inside this modal and press Ctrl+V on your keyboard to paste.');
+    }
+  };
+
+  if (!isOpen || !item) return null;
 
   const handleRemoveImage = (index) => {
     setImages((prev) => prev.filter((_, idx) => idx !== index));
@@ -99,10 +172,7 @@ export default function ProductImageModal({ item, isOpen, onClose, onSaveSuccess
           )}
 
           {/* Upload Drop Area */}
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-gray-300 hover:border-[#0C831F] bg-gray-50 hover:bg-green-50/40 rounded-2xl p-6 text-center cursor-pointer transition flex flex-col items-center justify-center group"
-          >
+          <div className="border-2 border-dashed border-gray-300 hover:border-[#0C831F] bg-gray-50 rounded-2xl p-6 text-center transition flex flex-col items-center justify-center">
             <input
               ref={fileInputRef}
               type="file"
@@ -117,17 +187,35 @@ export default function ProductImageModal({ item, isOpen, onClose, onSaveSuccess
                 <span>Optimizing and compressing images...</span>
               </div>
             ) : (
-              <>
-                <div className="w-12 h-12 rounded-full bg-white shadow-xs border border-gray-200 flex items-center justify-center mb-2 group-hover:scale-105 transition text-gray-600 group-hover:text-[#0C831F]">
-                  <Upload className="w-5 h-5" />
+              <div className="flex flex-col items-center gap-2.5 w-full">
+                <div className="flex items-center justify-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-3.5 py-2 bg-white hover:bg-gray-100 border border-gray-300 text-gray-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-[#0C831F]" />
+                    <span>Upload from Device</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handlePasteFromClipboardButton}
+                    className="px-3.5 py-2 bg-[#0C831F] hover:bg-green-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95"
+                  >
+                    <ClipboardPaste className="w-3.5 h-3.5" />
+                    <span>Paste Copied Photo</span>
+                  </button>
                 </div>
-                <div className="text-sm font-bold text-gray-800">
-                  Click or drag photos to upload
-                </div>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  PNG, JPG, WEBP. Supports multiple images. Auto-compressed for fast loading.
+
+                <p className="text-[11px] text-gray-500 font-medium">
+                  Or simply copy any photo and press{' '}
+                  <kbd className="px-1.5 py-0.5 bg-gray-200 border border-gray-300 rounded text-[10px] font-mono text-gray-800">
+                    Ctrl + V
+                  </kbd>{' '}
+                  anywhere to paste directly!
                 </p>
-              </>
+              </div>
             )}
           </div>
 

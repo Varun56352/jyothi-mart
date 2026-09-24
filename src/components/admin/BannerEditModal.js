@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X,
   Sparkles,
@@ -14,7 +14,12 @@ import {
   Palette,
   Image as ImageIcon,
   Sliders,
+  Upload,
+  ClipboardPaste,
+  Loader2,
+  Trash2,
 } from 'lucide-react';
+import { compressImage } from '@/lib/imageUtils';
 
 const THEMES = [
   { id: 'purple', name: 'Zepto Lavender', bg: 'bg-[#F4EEFF] text-[#581C87] border-purple-300' },
@@ -66,6 +71,99 @@ export default function BannerEditModal({ banner, isOpen, onClose, onSave }) {
     imageUrl: banner.imageUrl || '',
     linkUrl: banner.linkUrl || '',
   });
+
+  const [compressing, setCompressing] = useState(false);
+  const [imageError, setImageError] = useState('');
+  const fileInputRef = useRef(null);
+
+  const handleBannerFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCompressing(true);
+    setImageError('');
+    try {
+      const dataUrl = await compressImage(file, { maxWidth: 1400, maxHeight: 800, quality: 0.85 });
+      updateField('imageUrl', dataUrl);
+    } catch (err) {
+      setImageError(err.message || 'Failed to compress banner image');
+    } finally {
+      setCompressing(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handlePaste = useCallback(
+    async (e) => {
+      const clipboardData = e.clipboardData || window.clipboardData;
+      if (!clipboardData) return;
+
+      const items = clipboardData.items;
+      if (!items || items.length === 0) return;
+
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.type && it.type.startsWith('image/')) {
+          const file = it.getAsFile();
+          if (file) {
+            e.preventDefault();
+            setCompressing(true);
+            setImageError('');
+            try {
+              const dataUrl = await compressImage(file, { maxWidth: 1400, maxHeight: 800, quality: 0.85 });
+              updateField('imageUrl', dataUrl);
+            } catch (err) {
+              setImageError(err.message || 'Failed to compress pasted banner');
+            } finally {
+              setCompressing(false);
+            }
+            return;
+          }
+        }
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onWindowPaste = (e) => handlePaste(e);
+    window.addEventListener('paste', onWindowPaste);
+    return () => window.removeEventListener('paste', onWindowPaste);
+  }, [isOpen, handlePaste]);
+
+  const handlePasteFromClipboard = async () => {
+    setImageError('');
+    try {
+      if (navigator.clipboard?.read) {
+        const clipboardItems = await navigator.clipboard.read();
+        for (const cItem of clipboardItems) {
+          for (const type of cItem.types) {
+            if (type.startsWith('image/')) {
+              const blob = await cItem.getType(type);
+              const file = new File([blob], `banner-${Date.now()}.${type.split('/')[1] || 'png'}`, { type });
+              setCompressing(true);
+              const dataUrl = await compressImage(file, { maxWidth: 1400, maxHeight: 800, quality: 0.85 });
+              updateField('imageUrl', dataUrl);
+              setCompressing(false);
+              return;
+            }
+          }
+        }
+      }
+
+      const text = await navigator.clipboard?.readText();
+      if (text && (text.startsWith('http://') || text.startsWith('https://') || text.startsWith('data:image/'))) {
+        updateField('imageUrl', text.trim());
+      } else {
+        setImageError('No copied image found in clipboard. Please copy a photo first, then click Paste or press Ctrl+V.');
+      }
+    } catch (err) {
+      console.warn('Clipboard read error:', err);
+      setImageError('Please press Ctrl+V on your keyboard to paste.');
+    } finally {
+      setCompressing(false);
+    }
+  };
 
   const updateField = (field, val) => {
     setForm((prev) => ({ ...prev, [field]: val }));
@@ -369,19 +467,86 @@ export default function BannerEditModal({ banner, isOpen, onClose, onSave }) {
             </div>
 
             {/* Optional Image Banner Mode */}
-            <div className="pt-1">
+            <div className="pt-2 border-t border-gray-100">
               <label className="block text-xs font-bold text-gray-700 mb-1 flex items-center gap-1.5">
-                <ImageIcon className="w-3.5 h-3.5 text-gray-500" />
-                <span>Custom Image Banner URL (Optional)</span>
+                <ImageIcon className="w-3.5 h-3.5 text-[#0C831F]" />
+                <span>Custom Image Banner (Optional)</span>
               </label>
-              <input
-                type="url"
-                value={form.imageUrl}
-                onChange={(e) => updateField('imageUrl', e.target.value)}
-                placeholder="https://... (Leave empty to use Zepto card style)"
-                className="w-full text-xs px-3 py-2 rounded-xl border border-gray-300 focus:outline-none focus:border-[#0C831F]"
-              />
-              <p className="text-[10px] text-gray-400 mt-0.5">
+
+              {imageError && (
+                <div className="mb-2 p-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600">
+                  ⚠️ {imageError}
+                </div>
+              )}
+
+              {form.imageUrl ? (
+                <div className="relative mb-2 rounded-2xl overflow-hidden border border-gray-200 bg-gray-50 p-2">
+                  <img
+                    src={form.imageUrl}
+                    alt="Banner preview"
+                    className="w-full max-h-36 object-cover rounded-xl"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => updateField('imageUrl', '')}
+                    className="absolute top-4 right-4 bg-red-600 hover:bg-red-700 text-white p-1.5 rounded-xl shadow-md transition cursor-pointer"
+                    title="Remove custom banner"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : null}
+
+              <div className="space-y-1.5">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleBannerFile}
+                  className="hidden"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={compressing}
+                    className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    {compressing ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Optimizing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Upload Banner</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handlePasteFromClipboard}
+                    disabled={compressing}
+                    className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-[#0C831F] border border-emerald-200 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    title="Paste copied photo or press Ctrl+V"
+                  >
+                    <ClipboardPaste className="w-3.5 h-3.5" />
+                    <span>Paste (Ctrl+V)</span>
+                  </button>
+                </div>
+
+                <input
+                  type="url"
+                  value={form.imageUrl}
+                  onChange={(e) => updateField('imageUrl', e.target.value)}
+                  placeholder="Or enter banner image URL (https://...)"
+                  className="w-full text-xs px-3 py-2 rounded-xl border border-gray-300 focus:outline-none focus:border-[#0C831F]"
+                />
+              </div>
+
+              <p className="text-[10px] text-gray-400 mt-1">
                 If provided, will display as an Amazon / Prime Video full-bleed promotional banner.
               </p>
             </div>
