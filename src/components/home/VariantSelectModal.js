@@ -8,8 +8,28 @@ export default function VariantSelectModal({ item, isOpen, onClose }) {
 
   if (!isOpen || !item) return null;
 
-  const variants = Array.isArray(item.variants) && item.variants.length > 0 ? item.variants : [];
+  const rawVariants = Array.isArray(item.variants) && item.variants.length > 0 ? item.variants : [];
   const displayName = item.displayName || item.name;
+
+  const singleLabel =
+    item.displayUnit ||
+    (item.baseUnit
+      ? `${item.baseQty || 1} ${item.baseUnit}${item.unitType && item.unitType.toLowerCase() !== item.baseUnit.toLowerCase() ? '/' + item.unitType : ''}`
+      : item.unitType) ||
+    '1 unit';
+
+  const hasSingleVariant = rawVariants.some((v) => Number(v.qty) === 1 || v.label === singleLabel);
+
+  const variants = [...rawVariants];
+  if (!hasSingleVariant && rawVariants.length > 0) {
+    variants.push({
+      variantId: 'base_single',
+      qty: 1,
+      label: singleLabel,
+      price: Number(item.retailPrice) || 0,
+      mrp: item.mrp ? Number(item.mrp) : null,
+    });
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4">

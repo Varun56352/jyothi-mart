@@ -19,6 +19,22 @@ import {
 import { compressImage } from '@/lib/imageUtils';
 import { updateAdminItem, getAdminCategories, getAdminSubcategories } from '@/lib/api';
 
+const COMMON_UNITS = [
+  'ltr',
+  'ml',
+  'kg',
+  'gm',
+  'pcs',
+  'pkt',
+  'tin',
+  'can',
+  'bottle',
+  'box',
+  'puda',
+  'sheet',
+  'bora',
+];
+
 export default function ItemEditModal({ item, isOpen, onClose, onSaveSuccess }) {
   const [visible, setVisible] = useState(true);
   const [images, setImages] = useState([]);
@@ -31,6 +47,10 @@ export default function ItemEditModal({ item, isOpen, onClose, onSaveSuccess }) 
   const [mrp, setMrp] = useState('');
   const [customPrice, setCustomPrice] = useState('');
   const [variants, setVariants] = useState([]);
+  const [baseQty, setBaseQty] = useState(1);
+  const [baseUnit, setBaseUnit] = useState('pkt');
+  const [pkgSuffix, setPkgSuffix] = useState('');
+  const [displayUnit, setDisplayUnit] = useState('');
 
   const [compressing, setCompressing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -53,12 +73,13 @@ export default function ItemEditModal({ item, isOpen, onClose, onSaveSuccess }) 
 
   useEffect(() => {
     if (item) {
+      const type = item.itemType || (item.packageOnly ? 'packed' : 'loose');
       setVisible(item.visible !== false);
       setImages(Array.isArray(item.images) ? [...item.images] : []);
       setDisplayName(item.displayName || '');
       setCategoryId(item.categoryId ? String(item.categoryId) : '');
       setSubcategoryId(item.subcategoryId ? String(item.subcategoryId) : '');
-      setItemType(item.itemType || (item.packageOnly ? 'packed' : 'loose'));
+      setItemType(type);
       setMrp(item.mrp !== null && item.mrp !== undefined ? String(item.mrp) : '');
       setCustomPrice(
         item.customPrice !== null && item.customPrice !== undefined
@@ -66,6 +87,45 @@ export default function ItemEditModal({ item, isOpen, onClose, onSaveSuccess }) 
           : (item.retailPrice !== null && item.retailPrice !== undefined ? String(item.retailPrice) : '')
       );
       setVariants(Array.isArray(item.variants) ? JSON.parse(JSON.stringify(item.variants)) : []);
+
+      // Smart parsing of base quantity and unit
+      let parsedQty = item.baseQty;
+      let parsedUnit = item.baseUnit;
+      let parsedSuffix = '';
+
+      if (item.displayUnit && item.displayUnit.includes('/')) {
+        const parts = item.displayUnit.split('/');
+        parsedSuffix = parts[1]?.trim() || '';
+      }
+
+      if (!parsedQty || !parsedUnit) {
+        // Try to match from name, e.g. "Freedom 1ltr", "Coastal palm oil 750gm", "15kg"
+        const nameToScan = (item.displayName || item.originalName || item.name || '').toLowerCase();
+        const match = nameToScan.match(/(\d+(?:\.\d+)?)\s*(ltr|l|kg|gm|g|ml|pcs|pkt|tin|can|bottle|box)/i);
+        if (match) {
+          parsedQty = parsedQty || parseFloat(match[1]);
+          let u = match[2].toLowerCase();
+          if (u === 'l') u = 'ltr';
+          if (u === 'g') u = 'gm';
+          parsedUnit = parsedUnit || u;
+        }
+      }
+
+      parsedQty = parsedQty || 1;
+      parsedUnit = parsedUnit || (item.unitType && item.unitType !== 'pcs' ? item.unitType.toLowerCase() : (type === 'loose' ? 'kg' : 'pkt'));
+      if (!parsedSuffix && type === 'packed') {
+        const pType = (item.unitType || item.packagingType || 'pkt').toLowerCase();
+        if (['pkt', 'tin', 'can', 'bottle', 'box', 'bag', 'bora', 'puda'].includes(pType)) {
+          parsedSuffix = pType;
+        } else {
+          parsedSuffix = 'pkt';
+        }
+      }
+
+      setBaseQty(parsedQty);
+      setBaseUnit(parsedUnit);
+      setPkgSuffix(parsedSuffix);
+      setDisplayUnit(item.displayUnit || '');
       setError('');
     }
   }, [item]);
@@ -188,23 +248,108 @@ export default function ItemEditModal({ item, isOpen, onClose, onSaveSuccess }) 
     });
   };
 
-  // Variant Handlers
+  // Variant Handlers (Smart Blinkit-Style Pack Multipliers & Quantities)
   const handleAddVariant = () => {
-    const newVariant = {
-      variantId: `var_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-      label: '',
-      price: customPrice ? Number(customPrice) : (item.retailPrice || 0),
-      mrp: mrp ? Number(mrp) : null,
-      unit: item.unitType || '',
-      stock: null,
-    };
+    const defaultQty = variants.length === 0 ? 2 : (Number(variants[variants.length - 1]?.qty) || 1) + 1;
+    const baseP = customPrice ? Number(customPrice) : (item.retailPrice || 0);
+    const baseM = mrp ? Number(mrp) : null;
+
+    let newVariant;
+    if (itemType === 'packed') {
+      newVariant = {
+        variantId: `var_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        qty: defaultQty,
+        label: `Pack of ${defaultQty}`,
+        price: Math.round(baseP * defaultQty * 100) / 100,
+        mrp: baseM ? Math.round(baseM * defaultQty * 100) / 100 : null,
+        unit: baseUnit || item.unitType || '',
+        stock: null,
+      };
+    } else {
+      // Loose item: per-unit price defaults to base selling price
+      const perUnit = baseP;
+      newVariant = {
+        variantId: `var_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        qty: defaultQty,
+        label: `${defaultQty} ${baseUnit || 'kg'}`,
+        perUnitPrice: perUnit,
+        price: Math.round(perUnit * defaultQty * 100) / 100,
+        mrp: baseM ? Math.round(baseM * defaultQty * 100) / 100 : null,
+        unit: baseUnit || item.unitType || '',
+        stock: null,
+      };
+    }
     setVariants((prev) => [...prev, newVariant]);
   };
 
-  const handleUpdateVariant = (index, field, value) => {
+  const handleUpdateVariantQty = (index, val) => {
+    const q = val === '' ? '' : Number(val);
+    const numericQ = Number(val) || 0;
+    const baseP = customPrice ? Number(customPrice) : (item.retailPrice || 0);
+    const baseM = mrp ? Number(mrp) : null;
+
     setVariants((prev) => {
       const copy = [...prev];
-      copy[index] = { ...copy[index], [field]: value };
+      const cur = copy[index];
+      if (itemType === 'packed') {
+        copy[index] = {
+          ...cur,
+          qty: q,
+          label: numericQ > 0 ? `Pack of ${numericQ}` : cur.label,
+          price: numericQ > 0 ? Math.round(baseP * numericQ * 100) / 100 : cur.price,
+          mrp: baseM && numericQ > 0 ? Math.round(baseM * numericQ * 100) / 100 : null,
+        };
+      } else {
+        const perU = cur.perUnitPrice !== undefined && cur.perUnitPrice !== null && cur.perUnitPrice !== ''
+          ? Number(cur.perUnitPrice)
+          : baseP;
+        copy[index] = {
+          ...cur,
+          qty: q,
+          label: numericQ > 0 ? `${numericQ} ${baseUnit || 'kg'}` : cur.label,
+          price: numericQ > 0 ? Math.round(perU * numericQ * 100) / 100 : 0,
+          mrp: baseM && numericQ > 0 ? Math.round(baseM * numericQ * 100) / 100 : null,
+        };
+      }
+      return copy;
+    });
+  };
+
+  const handleUpdateVariantPerUnitPrice = (index, val) => {
+    const perU = val === '' ? '' : Number(val);
+    const numericPerU = Number(val) || 0;
+
+    setVariants((prev) => {
+      const copy = [...prev];
+      const cur = copy[index];
+      const q = Number(cur.qty) || 0;
+      copy[index] = {
+        ...cur,
+        perUnitPrice: perU,
+        price: q > 0 ? Math.round(numericPerU * q * 100) / 100 : 0,
+      };
+      return copy;
+    });
+  };
+
+  const handleUpdateVariantPrice = (index, val) => {
+    setVariants((prev) => {
+      const copy = [...prev];
+      copy[index] = {
+        ...copy[index],
+        price: val === '' ? '' : Number(val),
+      };
+      return copy;
+    });
+  };
+
+  const handleUpdateVariantLabel = (index, val) => {
+    setVariants((prev) => {
+      const copy = [...prev];
+      copy[index] = {
+        ...copy[index],
+        label: val,
+      };
       return copy;
     });
   };
@@ -220,6 +365,12 @@ export default function ItemEditModal({ item, isOpen, onClose, onSaveSuccess }) 
     numMrp > 0 && numPrice > 0 && numMrp > numPrice
       ? Math.round(((numMrp - numPrice) / numMrp) * 100)
       : 0;
+
+  const computedDisplayUnit = displayUnit || (
+    itemType === 'packed'
+      ? `${baseQty} ${baseUnit}${pkgSuffix ? '/' + pkgSuffix : ''}`.trim()
+      : `${baseQty} ${baseUnit}`.trim()
+  );
 
   // Validation & Save Handler
   const handleSave = async () => {
@@ -246,17 +397,26 @@ export default function ItemEditModal({ item, isOpen, onClose, onSaveSuccess }) 
     // Validate Variants
     for (let i = 0; i < variants.length; i++) {
       const v = variants[i];
-      if (!v.label || !v.label.trim()) {
-        setError(`Variant #${i + 1} is missing a pack size / quantity label (e.g. "1 kg").`);
+      const q = Number(v.qty);
+      if (!q || q <= 0) {
+        setError(`Variant #${i + 1} has an invalid quantity (must be greater than 0).`);
         return;
       }
-      if (v.price === undefined || v.price === '' || Number(v.price) <= 0) {
-        setError(`Variant #${i + 1} (${v.label}) has an invalid selling price.`);
+      const p = Number(v.price);
+      if (v.price === undefined || v.price === '' || isNaN(p) || p <= 0) {
+        setError(`Variant #${i + 1} (${v.label || 'Pack size'}) has an invalid selling price.`);
         return;
       }
       if (itemType === 'packed' && (!v.mrp || Number(v.mrp) <= 0)) {
-        setError(`Variant #${i + 1} (${v.label}) must have an MRP since this is a packed item.`);
+        setError(`Variant #${i + 1} (${v.label || 'Pack size'}) must have an MRP since this is a packed item.`);
         return;
+      }
+      if (itemType === 'loose') {
+        const perU = Number(v.perUnitPrice);
+        if (v.perUnitPrice === '' || v.perUnitPrice === undefined || isNaN(perU) || perU <= 0) {
+          setError(`Variant #${i + 1} (${v.label || 'Pack size'}) is missing a rate per ${baseUnit || 'kg'}.`);
+          return;
+        }
       }
     }
 
@@ -264,6 +424,10 @@ export default function ItemEditModal({ item, isOpen, onClose, onSaveSuccess }) 
     try {
       const selectedCat = categories.find((c) => String(c._id) === String(categoryId));
       const selectedSub = allSubcategories.find((s) => String(s._id) === String(subcategoryId));
+
+      const computedDisplayUnit = itemType === 'packed'
+        ? `${baseQty} ${baseUnit}${pkgSuffix ? '/' + pkgSuffix : ''}`.trim()
+        : `${baseQty} ${baseUnit}`.trim();
 
       const payload = {
         visible,
@@ -274,12 +438,19 @@ export default function ItemEditModal({ item, isOpen, onClose, onSaveSuccess }) 
         subcategoryId,
         subcategoryName: selectedSub?.name || item.subcategoryName || '',
         itemType,
+        baseQty: Number(baseQty) || 1,
+        baseUnit: (baseUnit || '').trim(),
+        displayUnit: computedDisplayUnit,
         mrp: mrp ? Number(mrp) : null,
         customPrice: customPrice ? Number(customPrice) : null,
         variants: variants.map((v) => ({
           ...v,
+          qty: Number(v.qty) || 1,
+          label: (v.label || '').trim() || (itemType === 'packed' ? `Pack of ${v.qty || 1}` : `${v.qty || 1} ${baseUnit || 'kg'}`),
           price: Number(v.price),
           mrp: v.mrp ? Number(v.mrp) : null,
+          perUnitPrice: v.perUnitPrice !== undefined && v.perUnitPrice !== null && v.perUnitPrice !== '' ? Number(v.perUnitPrice) : null,
+          unit: baseUnit || item.unitType || '',
         })),
       };
 
@@ -585,7 +756,107 @@ export default function ItemEditModal({ item, isOpen, onClose, onSaveSuccess }) 
             </div>
           </div>
 
-          {/* 5 & 6. MRP & Selling Price */}
+          {/* 5. Base Quantity & Packaging Measurement */}
+          <div className="bg-emerald-50/40 border border-emerald-200/80 rounded-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-extrabold text-[#0C831F] uppercase tracking-wider flex items-center gap-1.5">
+                <Scale className="w-3.5 h-3.5" />
+                <span>Base Quantity & Unit (e.g. 1 ltr/pkt)</span>
+              </label>
+              <span className="text-[10px] text-gray-500 font-semibold">
+                Original Unit: <strong className="text-gray-700">{item.unitType || item.packagingType || 'unit'}</strong>
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Quantity Number */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                  Quantity Value <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="any"
+                  value={baseQty}
+                  onChange={(e) => setBaseQty(e.target.value)}
+                  placeholder="e.g. 1, 750, 500"
+                  className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2 text-xs font-semibold text-gray-900 focus:outline-none focus:border-[#0C831F]"
+                />
+              </div>
+
+              {/* Measurement Unit */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                  Measurement Unit <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={COMMON_UNITS.includes(baseUnit) ? baseUnit : 'custom'}
+                  onChange={(e) => {
+                    if (e.target.value !== 'custom') {
+                      setBaseUnit(e.target.value);
+                    } else {
+                      setBaseUnit('');
+                    }
+                  }}
+                  className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2 text-xs font-semibold text-gray-900 focus:outline-none focus:border-[#0C831F]"
+                >
+                  <option value="ltr">ltr (Litre)</option>
+                  <option value="ml">ml (Millilitre)</option>
+                  <option value="kg">kg (Kilogram)</option>
+                  <option value="gm">gm (Gram)</option>
+                  <option value="pcs">pcs (Pieces)</option>
+                  <option value="pkt">pkt (Packet)</option>
+                  <option value="tin">tin (Tin)</option>
+                  <option value="can">can (Can)</option>
+                  <option value="bottle">bottle (Bottle)</option>
+                  <option value="box">box (Box)</option>
+                  <option value="puda">puda (Puda)</option>
+                  <option value="sheet">sheet (Sheet)</option>
+                  <option value="bora">bora (Bora)</option>
+                  <option value="custom">Other / Custom...</option>
+                </select>
+                {(!COMMON_UNITS.includes(baseUnit) || baseUnit === '') && (
+                  <input
+                    type="text"
+                    value={baseUnit}
+                    onChange={(e) => setBaseUnit(e.target.value)}
+                    placeholder="Type custom unit (e.g. roll)"
+                    className="mt-1.5 w-full bg-white border border-gray-300 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-gray-900 focus:outline-none focus:border-[#0C831F]"
+                  />
+                )}
+              </div>
+
+              {/* Suffix / Packaging Container (For Packed items) */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                  {itemType === 'packed' ? 'Packaging Suffix' : 'Display Suffix'}
+                </label>
+                <input
+                  type="text"
+                  value={pkgSuffix}
+                  onChange={(e) => setPkgSuffix(e.target.value)}
+                  placeholder={itemType === 'packed' ? 'e.g. pkt, bottle, tin' : 'Optional (leave blank)'}
+                  className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2 text-xs font-semibold text-gray-900 focus:outline-none focus:border-[#0C831F]"
+                />
+              </div>
+            </div>
+
+            {/* Live Storefront Unit Preview */}
+            <div className="bg-white border border-emerald-200 rounded-xl p-2.5 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 font-medium">Storefront Display:</span>
+                <span className="font-extrabold text-[#0C831F] bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-300">
+                  {computedDisplayUnit || '1 unit'}
+                </span>
+              </div>
+              <span className="text-[10px] text-gray-400">
+                Shown below title on website (e.g. 1 ltr/pkt)
+              </span>
+            </div>
+          </div>
+
+          {/* 6 & 7. MRP & Selling Price */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wider">
@@ -698,50 +969,134 @@ export default function ItemEditModal({ item, isOpen, onClose, onSaveSuccess }) 
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                        <div>
-                          <label className="block text-[10px] font-bold text-gray-500 mb-0.5 uppercase">
-                            Pack Label (e.g. 1 kg, 5 kg) *
-                          </label>
-                          <input
-                            type="text"
-                            value={v.label}
-                            onChange={(e) => handleUpdateVariant(idx, 'label', e.target.value)}
-                            placeholder="e.g. 5 kg"
-                            className="w-full bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 font-semibold text-xs focus:outline-none focus:border-[#0C831F]"
-                          />
-                        </div>
+                      {itemType === 'packed' ? (
+                        /* PACKED ITEM: Multiplier, Selling Price (auto with override), Auto MRP */
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                          {/* 1. Pack Multiplier */}
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-600 mb-0.5 uppercase">
+                              Pack Quantity (Multiplier) *
+                            </label>
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={v.qty ?? ''}
+                              onChange={(e) => handleUpdateVariantQty(idx, e.target.value)}
+                              placeholder="e.g. 3"
+                              className="w-full bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 font-bold text-xs focus:outline-none focus:border-[#0C831F]"
+                            />
+                            <div className="mt-1 space-y-0.5">
+                              <span className="text-[10px] text-gray-500 font-medium block">
+                                Pack Label:
+                              </span>
+                              <input
+                                type="text"
+                                value={v.label}
+                                onChange={(e) => handleUpdateVariantLabel(idx, e.target.value)}
+                                placeholder={`${v.qty || 1} x ${baseQty} ${baseUnit}`}
+                                className="w-full text-[11px] font-semibold text-gray-800 bg-white border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-[#0C831F]"
+                              />
+                            </div>
+                          </div>
 
-                        <div>
-                          <label className="block text-[10px] font-bold text-gray-500 mb-0.5 uppercase">
-                            Selling Price (₹) *
-                          </label>
-                          <input
-                            type="number"
-                            min="0"
-                            step="any"
-                            value={v.price}
-                            onChange={(e) => handleUpdateVariant(idx, 'price', e.target.value)}
-                            placeholder="e.g. 250"
-                            className="w-full bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 font-semibold text-xs focus:outline-none focus:border-[#0C831F]"
-                          />
-                        </div>
+                          {/* 2. Selling Price */}
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-600 mb-0.5 uppercase">
+                              Selling Price (₹) *
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={v.price ?? ''}
+                              onChange={(e) => handleUpdateVariantPrice(idx, e.target.value)}
+                              placeholder="Auto-calculated"
+                              className="w-full bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 font-bold text-xs focus:outline-none focus:border-[#0C831F]"
+                            />
+                            <span className="text-[10px] text-emerald-700 font-semibold block mt-1">
+                              Base: {v.qty || 1} × ₹{customPrice || item.retailPrice || 0} = ₹{Math.round((Number(customPrice) || item.retailPrice || 0) * (Number(v.qty) || 1) * 100) / 100}
+                            </span>
+                          </div>
 
-                        <div>
-                          <label className="block text-[10px] font-bold text-gray-500 mb-0.5 uppercase">
-                            MRP (₹) {itemType === 'packed' ? '(Required)' : '(Optional)'}
-                          </label>
-                          <input
-                            type="number"
-                            min="0"
-                            step="any"
-                            value={v.mrp || ''}
-                            onChange={(e) => handleUpdateVariant(idx, 'mrp', e.target.value)}
-                            placeholder="e.g. 280"
-                            className="w-full bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 font-semibold text-xs focus:outline-none focus:border-[#0C831F]"
-                          />
+                          {/* 3. Auto-calculated MRP */}
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-600 mb-0.5 uppercase">
+                              Auto MRP (₹) (Read-only)
+                            </label>
+                            <div className="w-full bg-gray-100 border border-gray-200 rounded-lg px-2.5 py-1.5 font-bold text-xs text-gray-700">
+                              {v.mrp ? `₹${v.mrp}` : (mrp ? `₹${Math.round(Number(mrp) * (Number(v.qty) || 1) * 100) / 100}` : 'No MRP')}
+                            </div>
+                            <span className="text-[10px] text-gray-500 font-medium block mt-1">
+                              {mrp ? `${v.qty || 1} × ₹${mrp} (auto from base)` : 'No base MRP defined'}
+                            </span>
+                          </div>
                         </div>
-                      </div>
+                      ) : (
+                        /* LOOSE ITEM: Quantity, Rate per unit, Auto-multiplied Total */
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                          {/* 1. Quantity in baseUnit */}
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-600 mb-0.5 uppercase">
+                              Quantity ({baseUnit || 'kg'}) *
+                            </label>
+                            <input
+                              type="number"
+                              min="0.05"
+                              step="any"
+                              value={v.qty ?? ''}
+                              onChange={(e) => handleUpdateVariantQty(idx, e.target.value)}
+                              placeholder="e.g. 5"
+                              className="w-full bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 font-bold text-xs focus:outline-none focus:border-[#0C831F]"
+                            />
+                            <div className="mt-1 space-y-0.5">
+                              <span className="text-[10px] text-gray-500 font-medium block">
+                                Pack Label:
+                              </span>
+                              <input
+                                type="text"
+                                value={v.label}
+                                onChange={(e) => handleUpdateVariantLabel(idx, e.target.value)}
+                                placeholder={`${v.qty || 1} ${baseUnit || 'kg'}`}
+                                className="w-full text-[11px] font-semibold text-gray-800 bg-white border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-[#0C831F]"
+                              />
+                            </div>
+                          </div>
+
+                          {/* 2. Rate per baseUnit */}
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-600 mb-0.5 uppercase">
+                              Rate per {baseUnit || 'kg'} (₹) *
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={v.perUnitPrice ?? ''}
+                              onChange={(e) => handleUpdateVariantPerUnitPrice(idx, e.target.value)}
+                              placeholder={String(customPrice || item.retailPrice || '')}
+                              className="w-full bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 font-bold text-xs focus:outline-none focus:border-[#0C831F]"
+                            />
+                            <span className="text-[10px] text-gray-500 block mt-1">
+                              Base: ₹{customPrice || item.retailPrice || 0}/{baseUnit || 'kg'}
+                            </span>
+                          </div>
+
+                          {/* 3. Auto Multiplied Total & MRP */}
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-600 mb-0.5 uppercase">
+                              Total Customer Pays
+                            </label>
+                            <div className="w-full bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5 font-black text-xs text-[#0C831F]">
+                              ₹{v.price || 0}
+                              {v.mrp ? <del className="text-gray-400 font-normal ml-2">₹{v.mrp}</del> : null}
+                            </div>
+                            <span className="text-[10px] text-emerald-700 font-semibold block mt-1">
+                              {v.qty || 1} × ₹{v.perUnitPrice || customPrice || 0} = ₹{v.price || 0} (MRP: ₹{v.mrp || 0})
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

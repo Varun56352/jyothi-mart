@@ -96,7 +96,11 @@ export default function ItemCard({ item, className }) {
               </button>
             ) : (
               <span className="text-[10px] text-gray-500 font-medium">
-                {item.unitType || '1 unit'}
+                {item.displayUnit ||
+                  (item.baseUnit
+                    ? `${item.baseQty || 1} ${item.baseUnit}${item.unitType && item.unitType.toLowerCase() !== item.baseUnit.toLowerCase() ? '/' + item.unitType : ''}`
+                    : item.unitType) ||
+                  '1 unit'}
               </span>
             )}
           </div>

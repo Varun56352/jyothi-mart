@@ -63,7 +63,7 @@ export function CartProvider({ children }) {
           mrp: itemMrp,
           qty: 1,
           image: item.images?.[0] || item.image || null,
-          unit: variant ? variant.label : (item.unitType || '1 unit'),
+          unit: variant ? variant.label : (item.displayUnit || item.unitType || '1 unit'),
           maxStock: item.stock,
         },
       ];
