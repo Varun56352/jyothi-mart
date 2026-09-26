@@ -19,6 +19,35 @@ export default function ItemCard({ item, className }) {
   const hasDiscount = numMrp > 0 && numPrice > 0 && numMrp > numPrice;
   const discountPercent = hasDiscount ? Math.round(((numMrp - numPrice) / numMrp) * 100) : 0;
 
+  // Options count for Blinkit-style button (single base unit + variant pack sizes)
+  const hasSingleVariant = item.variants?.some((v) => Number(v.qty) === 1);
+  const optionsCount = hasSingleVariant
+    ? (item.variants?.length || 0)
+    : (item.variants?.length || 0) + 1;
+
+  // Format unit / pack size display below title (e.g. "85 g", "15 kg/tin", "1 ltr/pkt")
+  const unitDisplay = (() => {
+    if (item.displayUnit) return item.displayUnit;
+    if (item.baseUnit) {
+      const suffix =
+        item.unitType && item.unitType.toLowerCase() !== item.baseUnit.toLowerCase()
+          ? `/${item.unitType}`
+          : '';
+      return `${item.baseQty || 1} ${item.baseUnit}${suffix}`;
+    }
+    // Fallback: check if original item name has measurement e.g. "15kg", "85 g", "1ltr", "750gm"
+    const nameToScan = item.displayName || item.originalName || item.name || '';
+    const match = nameToScan.match(/(\d+(?:\.\d+)?)\s*(ltr|l|kg|gm|g|ml|pcs|pkt|tin|can|bottle|box)/i);
+    if (match) {
+      let u = match[2].toLowerCase();
+      if (u === 'l') u = 'ltr';
+      if (u === 'g') u = 'g';
+      const suffix = item.unitType && item.unitType.toLowerCase() !== u ? `/${item.unitType}` : '';
+      return `${match[1]} ${u}${suffix}`;
+    }
+    return item.unitType || '1 unit';
+  })();
+
   // If item has variants, total quantity across all variants of this product
   const totalQty = getItemQty(item._id);
 
@@ -83,26 +112,11 @@ export default function ItemCard({ item, className }) {
             {displayName}
           </h3>
 
-          {/* Unit / Pack Size indicator */}
+          {/* Unit / Pack Size: Always display size (e.g. 85 g, 15 kg/tin) */}
           <div className="mt-1">
-            {hasVariants ? (
-              <button
-                type="button"
-                onClick={() => setVariantModalOpen(true)}
-                className="inline-flex items-center gap-0.5 text-[10px] font-bold text-[#0C831F] bg-green-50 px-1.5 py-0.5 rounded border border-green-200 hover:bg-green-100 transition cursor-pointer"
-              >
-                <span>{item.variants.length} pack options</span>
-                <ChevronDown className="w-2.5 h-2.5" />
-              </button>
-            ) : (
-              <span className="text-[10px] text-gray-500 font-medium">
-                {item.displayUnit ||
-                  (item.baseUnit
-                    ? `${item.baseQty || 1} ${item.baseUnit}${item.unitType && item.unitType.toLowerCase() !== item.baseUnit.toLowerCase() ? '/' + item.unitType : ''}`
-                    : item.unitType) ||
-                  '1 unit'}
-              </span>
-            )}
+            <span className="text-[11px] text-gray-500 font-medium line-clamp-1">
+              {unitDisplay}
+            </span>
           </div>
 
           {/* Pricing & Add Button Row */}
@@ -118,22 +132,34 @@ export default function ItemCard({ item, className }) {
               )}
             </div>
 
-            {/* If Item Has Variants */}
+            {/* If Item Has Variants: Blinkit Style Dual ADD Button */}
             {hasVariants ? (
               <button
                 type="button"
                 onClick={handleAddClick}
                 disabled={isOutOfStock}
                 className={cn(
-                  'text-xs font-extrabold px-3 py-1.5 rounded-xl border transition shadow-2xs active:scale-95 cursor-pointer',
+                  'min-w-[68px] sm:min-w-[74px] rounded-xl border transition shadow-2xs active:scale-95 cursor-pointer overflow-hidden flex flex-col items-center justify-center p-0',
                   totalQty > 0
-                    ? 'bg-[#0C831F] text-white border-[#0C831F]'
+                    ? 'bg-[#0C831F] border-[#0C831F] text-white'
                     : isOutOfStock
                     ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-                    : 'bg-green-50 text-[#0C831F] border-[#0C831F] hover:bg-green-100'
+                    : 'bg-white border-[#0C831F] text-[#0C831F] hover:bg-green-50/50'
                 )}
               >
-                {isOutOfStock ? 'OUT' : totalQty > 0 ? `${totalQty} in cart ▾` : 'ADD'}
+                <span className="font-black text-xs py-1 px-3">
+                  {isOutOfStock ? 'OUT' : totalQty > 0 ? `${totalQty} in cart` : 'ADD'}
+                </span>
+                <span
+                  className={cn(
+                    'w-full text-center font-bold text-[9px] py-0.5 px-1 leading-tight tracking-tight border-t',
+                    totalQty > 0
+                      ? 'bg-green-800 text-white border-green-700'
+                      : 'bg-emerald-50 text-[#0C831F] border-emerald-100'
+                  )}
+                >
+                  {optionsCount} options
+                </span>
               </button>
             ) : (
               /* Single Variant: Standard Counter */
